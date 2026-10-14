@@ -261,6 +261,63 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_BATTERY:   1125,     # a battery's toughness, by its eight cells, less the open bays
 	G.Block.MARLIT_WIRELESS:  500,
 	G.Block.MARLIT_OCTO:      5875,    # 27 cells at the basic block's rate
+	# Aero and Stryx stubs (G.STUB_BASE): their Falsus base's row, Aero x0.7, Stryx x1.3.
+	G.Block.AERO_CABIN: 438,
+	G.Block.AERO_BLOCK: 175,
+	G.Block.AERO_BLOCK2: 98,
+	G.Block.AERO_BLOCK3: 262,
+	G.Block.AERO_HALF: 119,
+	G.Block.AERO_HALF2: 241,
+	G.Block.AERO_WEDGE: 241,
+	G.Block.AERO_ARMOR: 525,
+	G.Block.AERO_ARMOR2: 1050,
+	G.Block.AERO_ARMOR4: 2100,
+	G.Block.AERO_ARMOR9: 4725,
+	G.Block.AERO_SMALL_WHEEL: 98,
+	G.Block.AERO_WHEEL: 133,
+	G.Block.AERO_BIG_WHEEL: 98,
+	G.Block.AERO_GUN: 144,
+	G.Block.AERO_SHOTGUN: 154,
+	G.Block.AERO_LASER: 133,
+	G.Block.AERO_ROCKET: 144,
+	G.Block.AERO_CANNON: 196,
+	G.Block.AERO_MORTAR: 186,
+	G.Block.AERO_DRILL: 186,
+	G.Block.AERO_SOLAR: 77,
+	G.Block.AERO_BATTERY: 119,
+	G.Block.AERO_REGEN: 119,
+	G.Block.AERO_SHIELD: 144,
+	G.Block.AERO_WIRELESS: 119,
+	G.Block.AERO_SUPPORT: 98,
+	G.Block.AERO_ROT_SUPPORT: 144,
+	G.Block.STRYX_CABIN: 812,
+	G.Block.STRYX_BLOCK: 325,
+	G.Block.STRYX_BLOCK2: 182,
+	G.Block.STRYX_BLOCK3: 488,
+	G.Block.STRYX_HALF: 221,
+	G.Block.STRYX_HALF2: 448,
+	G.Block.STRYX_WEDGE: 448,
+	G.Block.STRYX_ARMOR: 975,
+	G.Block.STRYX_ARMOR2: 1950,
+	G.Block.STRYX_ARMOR4: 3900,
+	G.Block.STRYX_ARMOR9: 8775,
+	G.Block.STRYX_SMALL_WHEEL: 182,
+	G.Block.STRYX_WHEEL: 247,
+	G.Block.STRYX_BIG_WHEEL: 182,
+	G.Block.STRYX_GUN: 266,
+	G.Block.STRYX_SHOTGUN: 286,
+	G.Block.STRYX_LASER: 247,
+	G.Block.STRYX_ROCKET: 266,
+	G.Block.STRYX_CANNON: 364,
+	G.Block.STRYX_MORTAR: 344,
+	G.Block.STRYX_DRILL: 344,
+	G.Block.STRYX_SOLAR: 143,
+	G.Block.STRYX_BATTERY: 221,
+	G.Block.STRYX_REGEN: 221,
+	G.Block.STRYX_SHIELD: 266,
+	G.Block.STRYX_WIRELESS: 221,
+	G.Block.STRYX_SUPPORT: 182,
+	G.Block.STRYX_ROT_SUPPORT: 266,
 }
 const DEFAULT_HP := 140
 
@@ -335,6 +392,57 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.SHIELD:    18.0,
 	G.Block.RADAR:     10.0,
 	G.Block.SUPPORT:   15.0,
+	# Aero and Stryx stubs: Aero x0.75 (its weapons x0.7), Stryx as Falsus. Wheels weigh in their scenes.
+	G.Block.AERO_CABIN: 22.5,
+	G.Block.AERO_BLOCK: 9.0,
+	G.Block.AERO_BLOCK2: 16.5,
+	G.Block.AERO_BLOCK3: 24.0,
+	G.Block.AERO_HALF: 5.2,
+	G.Block.AERO_HALF2: 10.5,
+	G.Block.AERO_WEDGE: 12.8,
+	G.Block.AERO_ARMOR: 25.5,
+	G.Block.AERO_ARMOR2: 51.0,
+	G.Block.AERO_ARMOR4: 102.0,
+	G.Block.AERO_ARMOR9: 229.5,
+	G.Block.AERO_GUN: 14.0,
+	G.Block.AERO_SHOTGUN: 13.3,
+	G.Block.AERO_LASER: 12.6,
+	G.Block.AERO_ROCKET: 15.4,
+	G.Block.AERO_CANNON: 21.0,
+	G.Block.AERO_MORTAR: 23.8,
+	G.Block.AERO_DRILL: 18.8,
+	G.Block.AERO_SOLAR: 6.0,
+	G.Block.AERO_BATTERY: 15.0,
+	G.Block.AERO_REGEN: 11.2,
+	G.Block.AERO_SHIELD: 13.5,
+	G.Block.AERO_WIRELESS: 12.0,
+	G.Block.AERO_SUPPORT: 11.2,
+	G.Block.AERO_ROT_SUPPORT: 15.0,
+	G.Block.STRYX_CABIN: 30.0,
+	G.Block.STRYX_BLOCK: 12.0,
+	G.Block.STRYX_BLOCK2: 22.0,
+	G.Block.STRYX_BLOCK3: 32.0,
+	G.Block.STRYX_HALF: 7.0,
+	G.Block.STRYX_HALF2: 14.0,
+	G.Block.STRYX_WEDGE: 17.0,
+	G.Block.STRYX_ARMOR: 34.0,
+	G.Block.STRYX_ARMOR2: 68.0,
+	G.Block.STRYX_ARMOR4: 136.0,
+	G.Block.STRYX_ARMOR9: 306.0,
+	G.Block.STRYX_GUN: 20.0,
+	G.Block.STRYX_SHOTGUN: 19.0,
+	G.Block.STRYX_LASER: 18.0,
+	G.Block.STRYX_ROCKET: 22.0,
+	G.Block.STRYX_CANNON: 30.0,
+	G.Block.STRYX_MORTAR: 34.0,
+	G.Block.STRYX_DRILL: 25.0,
+	G.Block.STRYX_SOLAR: 8.0,
+	G.Block.STRYX_BATTERY: 20.0,
+	G.Block.STRYX_REGEN: 15.0,
+	G.Block.STRYX_SHIELD: 18.0,
+	G.Block.STRYX_WIRELESS: 16.0,
+	G.Block.STRYX_SUPPORT: 15.0,
+	G.Block.STRYX_ROT_SUPPORT: 20.0,
 }
 const DEFAULT_WEIGHT := 10.0
 
@@ -394,9 +502,15 @@ func _ready() -> void:
 ## enters its new parent's world with its body, as before. What looks for a mounted block asks the
 ## machine's shapes and reads the tag: `hit_node`, `of_hit`, `query_hits`, `MACHINE_LAYER`.
 func _notification(what: int) -> void:
+	# A stub block of a faction with no models yet takes its tint the moment the scene is built, before
+	# it enters any tree - so the machine's batch and the loose batch collect the tinted parts.
+	if what == NOTIFICATION_SCENE_INSTANTIATED and has_meta("stub_faction"):
+		STUB_TINT.apply(self, String(get_meta("stub_faction")))
 	if what == NOTIFICATION_ENTER_WORLD or what == NOTIFICATION_ENABLED:
 		if is_mounted():
 			PhysicsServer3D.body_set_space(get_rid(), RID())
+
+const STUB_TINT := preload("res://blocks/scripts/stub_tint.gd")
 
 ## On a machine's grid: under its `blocks` node, which hangs on the machine's body.
 func is_mounted() -> bool:
@@ -522,17 +636,18 @@ const DMG_TABLE := [
 ]
 ## What explodes when hit (TerraTech's "volatile"): batteries and the launchers of explosive rounds.
 const VOLATILE_BLOCKS := [G.Block.BATTERY, G.Block.MARLIT_BATTERY, G.Block.ROCKET, G.Block.MORTAR,
-		G.Block.MARLIT_MORTAR]
+		G.Block.MARLIT_MORTAR]   # a stub is asked by its base (G.base_block)
 var _dmg_cls: int = -1
 
 ## This block's column in DMG_TABLE, worked out once.
 func damage_class() -> int:
 	if _dmg_cls < 0:
-		if ARMOR_BLOCKS.has(block):
+		var b: int = G.base_block(block)
+		if ARMOR_BLOCKS.has(b):
 			_dmg_cls = Cls.ARMOR
-		elif VOLATILE_BLOCKS.has(block):
+		elif VOLATILE_BLOCKS.has(b):
 			_dmg_cls = Cls.VOLATILE
-		elif block == G.Block.SHIELD:
+		elif b == G.Block.SHIELD:
 			_dmg_cls = Cls.SHIELD
 		elif has_method("probe_ground"):                   # every wheel: a tyre is rubber
 			_dmg_cls = Cls.RUBBER
@@ -636,7 +751,7 @@ func on_repaired() -> void:
 func _drop_chance() -> float:
 	if block in G.BATTERY_BLOCKS:
 		return DROP_CHANCE_BATTERY
-	if ARMOR_BLOCKS.has(block):
+	if ARMOR_BLOCKS.has(G.base_block(block)):
 		return DROP_CHANCE_ARMOR
 	return DROP_CHANCE
 

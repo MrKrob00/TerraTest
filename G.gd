@@ -231,6 +231,8 @@ func _reset_state() -> void:
 	killed_kinds = []
 	first_enemy_met = false
 	shop_sales = {}
+	shop_stock = {}
+	_sale_left = 0.0
 
 ## Путь к запечённым правкам рельефа этого слота. СПРАШИВАЕТ ЕГО САМА КАРТА (map._ready): слот
 ## выбирается в меню, когда игровой сцены ещё нет, и положить ей путь было бы некому. Одна
@@ -251,6 +253,8 @@ var menu_battles: bool = true
 ## так что одному игроку это экономит нажатие, а другому мешает: он подбирал мусор по дороге,
 ## а его каждый раз вышвыривало из езды. Дверь одна — `vehicle_body_3d._grab_world_block`.
 var build_on_pickup: bool = true
+## The small FPS readout in the bottom-right corner (hud.gd `_fps_lbl`), over the garage too.
+var show_fps: bool = true
 ## ЯЗЫК ИНТЕРФЕЙСА: "en" / "ru" / "uk". Конфиг устройства, а не прогресс — сброс мира его не
 ## трогает. Пусто при первом запуске: язык берётся у системы (см. _apply_lang).
 var lang: String = ""
@@ -306,6 +310,7 @@ func save_settings() -> void:
 		"cam_invert_y": cam_invert_y,
 		"menu_battles": menu_battles,
 		"build_on_pickup": build_on_pickup,
+		"show_fps": show_fps,
 		"lang": lang,
 		"ui_windows": ui_windows,
 	})
@@ -325,6 +330,7 @@ func _load_settings() -> void:
 	cam_invert_y = bool(data.get("cam_invert_y", false))
 	menu_battles = data.get("menu_battles", true) == true
 	build_on_pickup = data.get("build_on_pickup", true) == true
+	show_fps = data.get("show_fps", true) == true
 	lang = String(data.get("lang", ""))
 	var w = data.get("ui_windows", {})
 	if w is Dictionary:
@@ -413,15 +419,14 @@ const FACTIONS := {
 	# THE SECOND FACTION: sea and cliffs, drawn in low poly; blocks from 2x2x2 up, licensed by Big Yellow.
 	"marlit": {"name": "Marlit", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
 		"emblem": "res://images/faction_marlit.png"},
-	# THE THIRD AND FOURTH FACTIONS have a name and an emblem and nothing else yet: no blocks, no
-	# quests (docs/ART_STYLE.md, "Aero" and "Stryx", holds the style their models will be built to).
-	# Aero: the simulation's speed-test subsystem - light, fast, fragile. Stryx: its stealth special
-	# forces - heavy, armoured, faceted. Their licence quests (FACTION_LICENCE) are not written, so
-	# both stay closed outside the proving ground, and a page with no blocks shows in no tree.
+	# THE THIRD AND FOURTH FACTIONS carry STUB blocks for now (STUB_BASE): Falsus's models in the
+	# faction's tint with its own numbers (docs/ART_STYLE.md, "Aero" and "Stryx", holds the style their
+	# own models will be built to). Aero: the simulation's speed-test subsystem - light, fast, fragile.
+	# Stryx: its stealth special forces - heavy, armoured, built for the fight.
 	"aero": {"name": "Aero", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
-		"emblem": "res://images/faction_aero.png"},
+		"emblem": "res://images/faction_aero.png", "tint": Color(1.9, 1.3, 0.6)},
 	"stryx": {"name": "Stryx", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
-		"emblem": "res://images/faction_stryx.png"},
+		"emblem": "res://images/faction_stryx.png", "tint": Color(0.7, 0.95, 0.55)},
 }
 var _emblems: Dictionary = {}
 
@@ -568,6 +573,62 @@ const BLOCK_META := {
 	Block.MARLIT_MORTAR:    {"f": "marlit", "g": 5, "rp": 60},
 	Block.MARLIT_BATTERY:   {"f": "marlit", "g": 3, "rp": 35},
 	Block.MARLIT_WIRELESS:  {"f": "marlit", "g": 4, "rp": 45},
+	Block.AERO_CABIN: {"f": "aero", "g": 1, "rp": 0},
+	Block.AERO_BLOCK: {"f": "aero", "g": 1, "rp": 0},
+	Block.AERO_BLOCK2: {"f": "aero", "g": 1, "rp": 5},
+	Block.AERO_BLOCK3: {"f": "aero", "g": 2, "rp": 10},
+	Block.AERO_HALF: {"f": "aero", "g": 1, "rp": 5},
+	Block.AERO_HALF2: {"f": "aero", "g": 1, "rp": 8},
+	Block.AERO_WEDGE: {"f": "aero", "g": 2, "rp": 10},
+	Block.AERO_ARMOR: {"f": "aero", "g": 2, "rp": 15},
+	Block.AERO_ARMOR2: {"f": "aero", "g": 2, "rp": 18},
+	Block.AERO_ARMOR4: {"f": "aero", "g": 3, "rp": 25},
+	Block.AERO_ARMOR9: {"f": "aero", "g": 4, "rp": 35},
+	Block.AERO_SMALL_WHEEL: {"f": "aero", "g": 1, "rp": 0},
+	Block.AERO_WHEEL: {"f": "aero", "g": 1, "rp": 8},
+	Block.AERO_BIG_WHEEL: {"f": "aero", "g": 2, "rp": 15},
+	Block.AERO_GUN: {"f": "aero", "g": 2, "rp": 15},
+	Block.AERO_SHOTGUN: {"f": "aero", "g": 2, "rp": 18},
+	Block.AERO_LASER: {"f": "aero", "g": 4, "rp": 30},
+	Block.AERO_ROCKET: {"f": "aero", "g": 4, "rp": 35},
+	Block.AERO_CANNON: {"f": "aero", "g": 3, "rp": 25},
+	Block.AERO_MORTAR: {"f": "aero", "g": 4, "rp": 35},
+	Block.AERO_DRILL: {"f": "aero", "g": 1, "rp": 12},
+	Block.AERO_SOLAR: {"f": "aero", "g": 2, "rp": 15},
+	Block.AERO_BATTERY: {"f": "aero", "g": 3, "rp": 20},
+	Block.AERO_REGEN: {"f": "aero", "g": 4, "rp": 40},
+	Block.AERO_SHIELD: {"f": "aero", "g": 4, "rp": 40},
+	Block.AERO_WIRELESS: {"f": "aero", "g": 4, "rp": 30},
+	Block.AERO_SUPPORT: {"f": "aero", "g": 1, "rp": 5},
+	Block.AERO_ROT_SUPPORT: {"f": "aero", "g": 3, "rp": 20},
+	Block.STRYX_CABIN: {"f": "stryx", "g": 1, "rp": 0},
+	Block.STRYX_BLOCK: {"f": "stryx", "g": 1, "rp": 0},
+	Block.STRYX_BLOCK2: {"f": "stryx", "g": 1, "rp": 5},
+	Block.STRYX_BLOCK3: {"f": "stryx", "g": 2, "rp": 10},
+	Block.STRYX_HALF: {"f": "stryx", "g": 1, "rp": 5},
+	Block.STRYX_HALF2: {"f": "stryx", "g": 1, "rp": 8},
+	Block.STRYX_WEDGE: {"f": "stryx", "g": 2, "rp": 10},
+	Block.STRYX_ARMOR: {"f": "stryx", "g": 2, "rp": 15},
+	Block.STRYX_ARMOR2: {"f": "stryx", "g": 2, "rp": 18},
+	Block.STRYX_ARMOR4: {"f": "stryx", "g": 3, "rp": 25},
+	Block.STRYX_ARMOR9: {"f": "stryx", "g": 4, "rp": 35},
+	Block.STRYX_SMALL_WHEEL: {"f": "stryx", "g": 1, "rp": 5},
+	Block.STRYX_WHEEL: {"f": "stryx", "g": 1, "rp": 8},
+	Block.STRYX_BIG_WHEEL: {"f": "stryx", "g": 2, "rp": 15},
+	Block.STRYX_GUN: {"f": "stryx", "g": 1, "rp": 0},
+	Block.STRYX_SHOTGUN: {"f": "stryx", "g": 2, "rp": 18},
+	Block.STRYX_LASER: {"f": "stryx", "g": 4, "rp": 30},
+	Block.STRYX_ROCKET: {"f": "stryx", "g": 4, "rp": 35},
+	Block.STRYX_CANNON: {"f": "stryx", "g": 3, "rp": 25},
+	Block.STRYX_MORTAR: {"f": "stryx", "g": 4, "rp": 35},
+	Block.STRYX_DRILL: {"f": "stryx", "g": 1, "rp": 12},
+	Block.STRYX_SOLAR: {"f": "stryx", "g": 2, "rp": 15},
+	Block.STRYX_BATTERY: {"f": "stryx", "g": 3, "rp": 20},
+	Block.STRYX_REGEN: {"f": "stryx", "g": 4, "rp": 40},
+	Block.STRYX_SHIELD: {"f": "stryx", "g": 4, "rp": 40},
+	Block.STRYX_WIRELESS: {"f": "stryx", "g": 4, "rp": 30},
+	Block.STRYX_SUPPORT: {"f": "stryx", "g": 1, "rp": 5},
+	Block.STRYX_ROT_SUPPORT: {"f": "stryx", "g": 3, "rp": 20},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -621,6 +682,60 @@ const TECH_PARENT := {
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
 	Block.MORTAR: Block.ROCKET,         # навесная стрельба ветвится от ракетницы
+	Block.AERO_BLOCK: Block.AERO_CABIN,
+	Block.AERO_BLOCK2: Block.AERO_BLOCK,
+	Block.AERO_BLOCK3: Block.AERO_BLOCK2,
+	Block.AERO_HALF: Block.AERO_BLOCK,
+	Block.AERO_HALF2: Block.AERO_HALF,
+	Block.AERO_WEDGE: Block.AERO_BLOCK2,
+	Block.AERO_ARMOR: Block.AERO_BLOCK,
+	Block.AERO_ARMOR2: Block.AERO_ARMOR,
+	Block.AERO_ARMOR4: Block.AERO_ARMOR2,
+	Block.AERO_ARMOR9: Block.AERO_ARMOR4,
+	Block.AERO_SMALL_WHEEL: Block.AERO_BLOCK,
+	Block.AERO_WHEEL: Block.AERO_SMALL_WHEEL,
+	Block.AERO_BIG_WHEEL: Block.AERO_WHEEL,
+	Block.AERO_GUN: Block.AERO_CABIN,
+	Block.AERO_SHOTGUN: Block.AERO_GUN,
+	Block.AERO_LASER: Block.AERO_GUN,
+	Block.AERO_ROCKET: Block.AERO_LASER,
+	Block.AERO_CANNON: Block.AERO_GUN,
+	Block.AERO_MORTAR: Block.AERO_CANNON,
+	Block.AERO_DRILL: Block.AERO_CABIN,
+	Block.AERO_SOLAR: Block.AERO_CABIN,
+	Block.AERO_BATTERY: Block.AERO_SOLAR,
+	Block.AERO_REGEN: Block.AERO_BATTERY,
+	Block.AERO_SHIELD: Block.AERO_BATTERY,
+	Block.AERO_WIRELESS: Block.AERO_BATTERY,
+	Block.AERO_SUPPORT: Block.AERO_CABIN,
+	Block.AERO_ROT_SUPPORT: Block.AERO_SUPPORT,
+	Block.STRYX_BLOCK: Block.STRYX_CABIN,
+	Block.STRYX_BLOCK2: Block.STRYX_BLOCK,
+	Block.STRYX_BLOCK3: Block.STRYX_BLOCK2,
+	Block.STRYX_HALF: Block.STRYX_BLOCK,
+	Block.STRYX_HALF2: Block.STRYX_HALF,
+	Block.STRYX_WEDGE: Block.STRYX_BLOCK2,
+	Block.STRYX_ARMOR: Block.STRYX_BLOCK,
+	Block.STRYX_ARMOR2: Block.STRYX_ARMOR,
+	Block.STRYX_ARMOR4: Block.STRYX_ARMOR2,
+	Block.STRYX_ARMOR9: Block.STRYX_ARMOR4,
+	Block.STRYX_SMALL_WHEEL: Block.STRYX_BLOCK,
+	Block.STRYX_WHEEL: Block.STRYX_SMALL_WHEEL,
+	Block.STRYX_BIG_WHEEL: Block.STRYX_WHEEL,
+	Block.STRYX_GUN: Block.STRYX_CABIN,
+	Block.STRYX_SHOTGUN: Block.STRYX_GUN,
+	Block.STRYX_LASER: Block.STRYX_GUN,
+	Block.STRYX_ROCKET: Block.STRYX_LASER,
+	Block.STRYX_CANNON: Block.STRYX_GUN,
+	Block.STRYX_MORTAR: Block.STRYX_CANNON,
+	Block.STRYX_DRILL: Block.STRYX_CABIN,
+	Block.STRYX_SOLAR: Block.STRYX_CABIN,
+	Block.STRYX_BATTERY: Block.STRYX_SOLAR,
+	Block.STRYX_REGEN: Block.STRYX_BATTERY,
+	Block.STRYX_SHIELD: Block.STRYX_BATTERY,
+	Block.STRYX_WIRELESS: Block.STRYX_BATTERY,
+	Block.STRYX_SUPPORT: Block.STRYX_CABIN,
+	Block.STRYX_ROT_SUPPORT: Block.STRYX_SUPPORT,
 }
 # ═══ МАТЕРИАЛЫ: руды, слитки, компоненты ═════════════════════════════════════════
 # Четыре руды плавятся в четыре слитка, уголь не плавится (он топливо). Шесть компонентов
@@ -1122,6 +1237,62 @@ const BLOCK_RECIPE := {
 	Block.LASER:        {"c10": 3, "c19": 2},  # Pulse Emitter + Optic Sensor
 	Block.ROCKET:       {"c10": 3, "c8": 3},   # Pulse Emitter + Signal Relay
 	Block.MORTAR:       {"c11": 3, "c18": 2},  # Armour Segment + Control Chip
+	Block.AERO_CABIN: {"c12": 2, "c18": 2},
+	Block.AERO_BLOCK: {"m0": 2, "m3": 2},
+	Block.AERO_BLOCK2: {"m0": 4, "m3": 3},
+	Block.AERO_BLOCK3: {"m0": 5, "m3": 5},
+	Block.AERO_HALF: {"m0": 1, "m3": 1},
+	Block.AERO_HALF2: {"m0": 2, "m3": 1},
+	Block.AERO_WEDGE: {"m0": 2, "m3": 2},
+	Block.AERO_ARMOR: {"c1": 2, "m3": 2},
+	Block.AERO_ARMOR2: {"c1": 3, "m3": 4},
+	Block.AERO_ARMOR4: {"c11": 3, "c1": 4},
+	Block.AERO_ARMOR9: {"c11": 7, "c1": 9},
+	Block.AERO_SMALL_WHEEL: {"c16": 1, "m0": 2},
+	Block.AERO_WHEEL: {"c16": 1, "m0": 4},
+	Block.AERO_BIG_WHEEL: {"c16": 2, "m0": 8},
+	Block.AERO_GUN: {"c17": 2, "m3": 6},
+	Block.AERO_SHOTGUN: {"c17": 2, "m3": 5},
+	Block.AERO_LASER: {"c10": 3, "c19": 2},
+	Block.AERO_ROCKET: {"c10": 3, "c8": 3},
+	Block.AERO_CANNON: {"c11": 3, "c17": 2},
+	Block.AERO_MORTAR: {"c11": 3, "c18": 2},
+	Block.AERO_DRILL: {"c7": 2, "m3": 6},
+	Block.AERO_SOLAR: {"c5": 3, "m2": 4},
+	Block.AERO_BATTERY: {"c9": 2, "m1": 5},
+	Block.AERO_REGEN: {"c14": 2, "c20": 2},
+	Block.AERO_SHIELD: {"c20": 3, "c6": 2},
+	Block.AERO_WIRELESS: {"c6": 3, "c20": 2},
+	Block.AERO_SUPPORT: {"c2": 2, "m0": 4},
+	Block.AERO_ROT_SUPPORT: {"c16": 2, "m0": 6},
+	Block.STRYX_CABIN: {"c12": 2, "c18": 2},
+	Block.STRYX_BLOCK: {"m0": 2, "m3": 2},
+	Block.STRYX_BLOCK2: {"m0": 4, "m3": 3},
+	Block.STRYX_BLOCK3: {"m0": 5, "m3": 5},
+	Block.STRYX_HALF: {"m0": 1, "m3": 1},
+	Block.STRYX_HALF2: {"m0": 2, "m3": 1},
+	Block.STRYX_WEDGE: {"m0": 2, "m3": 2},
+	Block.STRYX_ARMOR: {"c1": 2, "m3": 2},
+	Block.STRYX_ARMOR2: {"c1": 3, "m3": 4},
+	Block.STRYX_ARMOR4: {"c11": 3, "c1": 4},
+	Block.STRYX_ARMOR9: {"c11": 7, "c1": 9},
+	Block.STRYX_SMALL_WHEEL: {"c16": 1, "m0": 2},
+	Block.STRYX_WHEEL: {"c16": 1, "m0": 4},
+	Block.STRYX_BIG_WHEEL: {"c16": 2, "m0": 8},
+	Block.STRYX_GUN: {"c17": 2, "m3": 6},
+	Block.STRYX_SHOTGUN: {"c17": 2, "m3": 5},
+	Block.STRYX_LASER: {"c10": 3, "c19": 2},
+	Block.STRYX_ROCKET: {"c10": 3, "c8": 3},
+	Block.STRYX_CANNON: {"c11": 3, "c17": 2},
+	Block.STRYX_MORTAR: {"c11": 3, "c18": 2},
+	Block.STRYX_DRILL: {"c7": 2, "m3": 6},
+	Block.STRYX_SOLAR: {"c5": 3, "m2": 4},
+	Block.STRYX_BATTERY: {"c9": 2, "m1": 5},
+	Block.STRYX_REGEN: {"c14": 2, "c20": 2},
+	Block.STRYX_SHIELD: {"c20": 3, "c6": 2},
+	Block.STRYX_WIRELESS: {"c6": 3, "c20": 2},
+	Block.STRYX_SUPPORT: {"c2": 2, "m0": 4},
+	Block.STRYX_ROT_SUPPORT: {"c16": 2, "m0": 6},
 }
 
 ## Из чего собирается блок: {ключ материала → штук}. Пустой словарь — рецепта нет.
@@ -1161,51 +1332,123 @@ const CRAFT_MARKUP := 1.25
 ## а именно так и было: блок стоил в магазине 5$ при материалах на 300$.
 const SHOP_MARKUP := 1.3
 
-# ── РАСПРОДАЖА В МАГАЗИНЕ ─────────────────────────────────────────────────────
-# ЗДЕСЬ БЫЛ РЫНОК, И ОН НЕ РАБОТАЛ. Скидки и наценки висели на ПРОДАЖЕ материалов, а
-# показывала их панель в правом верхнем углу, рядом с картой. Чтобы механикой воспользоваться,
-# надо было держать в голове четыре строки таблицы, ехать за нужным металлом и успеть вернуться
-# за пятнадцать минут — а решение «что везти» игрок принимает уже у продавца, где никакой
-# панели нет. Постоянно занятый угол экрана ради числа, нужного раз в четверть часа.
+# ── THE SHOP'S STOCK: A RANDOM WINDOW, RESTOCKED ONCE A GAME DAY (the player's balance) ───────
+# Only researched blocks are ever offered (`is_block_shop_unlocked`), and not all of them: a grade-1
+# block of its faction is BASIC and always there with no end to it; a block of grades 2-3 comes up on
+# a day with SHOP_MID_CHANCE, a few of it; a block of SHOP_TOP_GRADE and over is TOP - rarer and one
+# or two. A day is the day cycle's (`DayCycle.day_length`, 1200 s of play); the stock and the seconds
+# to the next restock go into the progress save, so a reload does not reroll the window. A bought
+# block comes off the count (`shop_take`); a stock-limited block at zero leaves the window till the
+# next day. The proving ground's shop is everything, endless. The day's discounts fall on blocks in
+# the window (a sale on a block not offered would be a wasted place).
 #
-# Скидка обязана жить ТАМ, ГДЕ ЕЮ ПОЛЬЗУЮТСЯ. Игрок открывает склад, видит «−30%» на конкретном
-# блоке и решает, брать ли его сейчас: ни таблицы, ни памяти, ни отдельного окна.
-#
-# ТОЛЬКО СКИДКИ, БЕЗ НАЦЕНОК. Наценка в магазине — это штраф за то, что игрок зашёл не в ту
-# минуту: она ничего не открывает и ничего не предлагает, только просит подождать.
-const SALE_WINDOW := 900.0          # 15 минут: витрина должна пережить поездку за деньгами
+# ONLY DISCOUNTS, NO MARK-UPS: a mark-up punishes coming in at the wrong minute and offers nothing.
+const SHOP_DAY := 1200.0
+const SHOP_TOP_GRADE := 4
+const SHOP_MID_CHANCE := 0.6
+const SHOP_TOP_CHANCE := 0.3
+const SHOP_MID_COUNT := Vector2i(2, 4)
+const SHOP_TOP_COUNT := Vector2i(1, 2)
 const SALE_COUNT := 3
-## Ступени скидки, по одной на позицию распродажи: −20 / −30 / −40 %. Разные, а не одна на всех:
-## одинаковая скидка на три блока читается как «магазин просто подешевел», а разная — как выбор.
+## A step per sale place, -20 / -30 / -40 %: one discount for all three reads as "the shop got
+## cheaper", three different ones as a choice.
 const SALE_STEPS := [0.8, 0.7, 0.6]
 
 signal shop_sales_changed
 
-var shop_sales: Dictionary = {}     # G.Block (int) → множитель цены (только там, где он есть)
+var shop_sales: Dictionary = {}     # G.Block (int) -> price multiplier (only where there is one)
+## Block (int) -> how many are left today; -1 is endless. Only what is in today's window.
+var shop_stock: Dictionary = {}
 var _sale_left: float = 0.0
 
 func _process(delta: float) -> void:
+	# The shop's day runs only in the world: in the menu the slot may be about to be deleted, and a
+	# restock writes progress.
+	if get_node_or_null("/root/Main") == null:
+		return
 	_sale_left -= delta
 	if _sale_left <= 0.0:
-		_roll_shop_sales()
+		roll_shop_stock()
 
-## Сколько секунд до смены витрины — для UI.
+## Seconds to the next restock, for the UI.
 func shop_sale_seconds_left() -> float:
 	return maxf(_sale_left, 0.0)
 
-func _roll_shop_sales() -> void:
-	_sale_left = SALE_WINDOW
+func _shop_grade(bt: int) -> int:
+	return int((BLOCK_META.get(bt, {}) as Dictionary).get("g", 1))
+
+## Today's window: the basic blocks endless, the rest drawn by grade.
+func roll_shop_stock() -> void:
+	_sale_left = SHOP_DAY
+	shop_stock.clear()
 	shop_sales.clear()
-	# Скидка ТОЛЬКО на то, что игрок может купить ПРЯМО СЕЙЧАС. Скидка на запертый блок — это
-	# потраченная впустую позиция: увидеть её игрок увидит, а воспользоваться не сможет, и
-	# распродажа из трёх штук превратилась бы в распродажу из одной.
 	var pool: Array = []
 	for bt in BLOCK_META:
-		if is_block_shop_unlocked(int(bt)):
-			pool.append(int(bt))
+		var b: int = int(bt)
+		if not is_block_shop_unlocked(b):
+			continue
+		var g: int = _shop_grade(b)
+		if g <= 1:
+			shop_stock[b] = -1
+		elif g >= SHOP_TOP_GRADE:
+			if randf() < SHOP_TOP_CHANCE:
+				shop_stock[b] = randi_range(SHOP_TOP_COUNT.x, SHOP_TOP_COUNT.y)
+		elif randf() < SHOP_MID_CHANCE:
+			shop_stock[b] = randi_range(SHOP_MID_COUNT.x, SHOP_MID_COUNT.y)
+		if shop_stock.has(b):
+			pool.append(b)
 	pool.shuffle()
 	for i in mini(SALE_COUNT, pool.size()):
 		shop_sales[pool[i]] = SALE_STEPS[i % SALE_STEPS.size()]
+	mark_progress_dirty()
+	shop_sales_changed.emit()
+
+## How many of a block the shop has today: -1 endless, 0 not offered. A block researched today
+## (after the roll) waits for tomorrow's window - unless it is basic, which is always there.
+func shop_count(bt: int) -> int:
+	if proving_ground:
+		return -1
+	if shop_stock.has(bt):
+		return int(shop_stock[bt])
+	if _shop_grade(bt) <= 1 and is_block_shop_unlocked(bt):
+		return -1
+	return 0
+
+## One bought: off today's count.
+func shop_take(bt: int) -> void:
+	if proving_ground or not shop_stock.has(bt) or int(shop_stock[bt]) < 0:
+		return
+	shop_stock[bt] = int(shop_stock[bt]) - 1
+	if int(shop_stock[bt]) <= 0:
+		shop_stock.erase(bt)
+		shop_sales.erase(bt)
+	mark_progress_dirty()
+	shop_sales_changed.emit()
+
+func _shop_save() -> Dictionary:
+	var st: Dictionary = {}
+	for b in shop_stock:
+		st[block_key(int(b))] = int(shop_stock[b])
+	var sa: Dictionary = {}
+	for b in shop_sales:
+		sa[block_key(int(b))] = float(shop_sales[b])
+	return {"stock": st, "sales": sa, "left": _sale_left}
+
+func _shop_load(d: Variant) -> void:
+	shop_stock.clear()
+	shop_sales.clear()
+	if not (d is Dictionary) or not (d as Dictionary).has("stock"):
+		_sale_left = 0.0                      # no saved window: roll one on the next frame
+		return
+	for k in d["stock"]:
+		var b: int = block_from_key(k)
+		if b != Block.EMPTY:
+			shop_stock[b] = int(d["stock"][k])
+	for k in d.get("sales", {}):
+		var b: int = block_from_key(k)
+		if b != Block.EMPTY and shop_stock.has(b):
+			shop_sales[b] = float(d["sales"][k])
+	_sale_left = float(d.get("left", SHOP_DAY))
 	shop_sales_changed.emit()
 
 ## Цена блока С УЧЁТОМ РАСПРОДАЖИ. Только для магазина — и на витрине, и при покупке.
@@ -1461,7 +1704,7 @@ const LEGACY_BLOCK_KEYS := {
 ## сборка не сойдётся по клеткам.
 ## What stores charge: the machine sums these (machine_body) and a wireless charger aims at them.
 ## One list, so a faction's battery is one line here rather than a type test in each reader.
-const BATTERY_BLOCKS := [Block.BATTERY, Block.MARLIT_BATTERY]
+const BATTERY_BLOCKS := [Block.BATTERY, Block.MARLIT_BATTERY, Block.AERO_BATTERY, Block.STRYX_BATTERY]
 
 const RETIRED_BLOCKS := {
 	Block.WEDGE: Block.HALF_BLOCK,   # клин 1³ повторял половинку той же клеткой
@@ -1530,6 +1773,62 @@ const BLOCK_LABEL := {
 	Block.BATTERY: "Battery", Block.SOLAR: "Solar Panel", Block.GENERATOR: "Generator",
 	Block.WIRELESS_CHARGER: "Wireless Charger",
 	Block.REGEN: "Repair Field", Block.SHIELD: "Shield Dome", Block.RADAR: "Radar",
+	Block.AERO_CABIN: "Aero Cabin",
+	Block.AERO_BLOCK: "Aero Frame Block",
+	Block.AERO_BLOCK2: "Aero Frame Block ×2",
+	Block.AERO_BLOCK3: "Aero Frame Block ×3",
+	Block.AERO_HALF: "Aero Half Block",
+	Block.AERO_HALF2: "Aero Half Block ×2",
+	Block.AERO_WEDGE: "Aero Wedge",
+	Block.AERO_ARMOR: "Aero Armour Plate",
+	Block.AERO_ARMOR2: "Aero Armour Plate ×2",
+	Block.AERO_ARMOR4: "Aero Armour Plate ×4",
+	Block.AERO_ARMOR9: "Aero Armour Plate ×9",
+	Block.AERO_SMALL_WHEEL: "Aero Small Wheel",
+	Block.AERO_WHEEL: "Aero Light Wheel",
+	Block.AERO_BIG_WHEEL: "Aero Big Wheel",
+	Block.AERO_GUN: "Aero Machine Gun",
+	Block.AERO_SHOTGUN: "Aero Shotgun",
+	Block.AERO_LASER: "Aero Laser",
+	Block.AERO_ROCKET: "Aero Rocket Launcher",
+	Block.AERO_CANNON: "Aero Heavy Cannon",
+	Block.AERO_MORTAR: "Aero Mortar",
+	Block.AERO_DRILL: "Aero Drill",
+	Block.AERO_SOLAR: "Aero Solar Panel",
+	Block.AERO_BATTERY: "Aero Battery",
+	Block.AERO_REGEN: "Aero Repair Field",
+	Block.AERO_SHIELD: "Aero Shield Dome",
+	Block.AERO_WIRELESS: "Aero Wireless Charger",
+	Block.AERO_SUPPORT: "Aero Support",
+	Block.AERO_ROT_SUPPORT: "Aero Rotating Support",
+	Block.STRYX_CABIN: "Stryx Cabin",
+	Block.STRYX_BLOCK: "Stryx Frame Block",
+	Block.STRYX_BLOCK2: "Stryx Frame Block ×2",
+	Block.STRYX_BLOCK3: "Stryx Frame Block ×3",
+	Block.STRYX_HALF: "Stryx Half Block",
+	Block.STRYX_HALF2: "Stryx Half Block ×2",
+	Block.STRYX_WEDGE: "Stryx Wedge",
+	Block.STRYX_ARMOR: "Stryx Armour Plate",
+	Block.STRYX_ARMOR2: "Stryx Armour Plate ×2",
+	Block.STRYX_ARMOR4: "Stryx Armour Plate ×4",
+	Block.STRYX_ARMOR9: "Stryx Armour Plate ×9",
+	Block.STRYX_SMALL_WHEEL: "Stryx Small Wheel",
+	Block.STRYX_WHEEL: "Stryx Wheel",
+	Block.STRYX_BIG_WHEEL: "Stryx Big Wheel",
+	Block.STRYX_GUN: "Stryx Machine Gun",
+	Block.STRYX_SHOTGUN: "Stryx Shotgun",
+	Block.STRYX_LASER: "Stryx Laser",
+	Block.STRYX_ROCKET: "Stryx Rocket Launcher",
+	Block.STRYX_CANNON: "Stryx Heavy Cannon",
+	Block.STRYX_MORTAR: "Stryx Mortar",
+	Block.STRYX_DRILL: "Stryx Drill",
+	Block.STRYX_SOLAR: "Stryx Solar Panel",
+	Block.STRYX_BATTERY: "Stryx Battery",
+	Block.STRYX_REGEN: "Stryx Repair Field",
+	Block.STRYX_SHIELD: "Stryx Shield Dome",
+	Block.STRYX_WIRELESS: "Stryx Wireless Charger",
+	Block.STRYX_SUPPORT: "Stryx Support",
+	Block.STRYX_ROT_SUPPORT: "Stryx Rotating Support",
 }
 
 func block_name(bt: int) -> String:
@@ -1621,6 +1920,62 @@ const BLOCK_DESC := {
 	Block.REGEN: "Repair field: mends the blocks around it while there is energy to spend.",
 	Block.SHIELD: "Dome: covers what its SPHERE reaches, not what is bolted to it. Parked on the tail it leaves the nose outside.",
 	Block.RADAR: "Widens what the map shows.",
+	Block.AERO_CABIN: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_BLOCK: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_BLOCK2: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_BLOCK3: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_HALF: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_HALF2: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_WEDGE: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_ARMOR: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_ARMOR2: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_ARMOR4: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_ARMOR9: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_SMALL_WHEEL: "An Aero wheel on the Falsus model until the faction's own is built: lighter, and it pulls harder.",
+	Block.AERO_WHEEL: "Aero's light racing wheel: an open formula corner on two aerofoil arms and a coilover, a slick on a spoked rim. Lighter, and it pulls harder.",
+	Block.AERO_BIG_WHEEL: "An Aero wheel on the Falsus model until the faction's own is built: lighter, and it pulls harder.",
+	Block.AERO_GUN: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_SHOTGUN: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_LASER: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_ROCKET: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_CANNON: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_MORTAR: "An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.",
+	Block.AERO_DRILL: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_SOLAR: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_BATTERY: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_REGEN: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_SHIELD: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_WIRELESS: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_SUPPORT: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.AERO_ROT_SUPPORT: "An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.",
+	Block.STRYX_CABIN: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_BLOCK: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_BLOCK2: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_BLOCK3: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_HALF: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_HALF2: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_WEDGE: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_ARMOR: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_ARMOR2: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_ARMOR4: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_ARMOR9: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_SMALL_WHEEL: "A Stryx wheel on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_WHEEL: "A Stryx wheel on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_BIG_WHEEL: "A Stryx wheel on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_GUN: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_SHOTGUN: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_LASER: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_ROCKET: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_CANNON: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_MORTAR: "A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.",
+	Block.STRYX_DRILL: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_SOLAR: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_BATTERY: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_REGEN: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_SHIELD: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_WIRELESS: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_SUPPORT: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
+	Block.STRYX_ROT_SUPPORT: "A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.",
 }
 
 ## Одной фразой: что делает этот блок. Пусто — строки нет, и это нормально: справочник
@@ -1731,6 +2086,14 @@ var _dbg_main: Node = null
 
 ## Значение отладочного флага. `def` — что вернуть, если отладка выключена или спросить не у
 ## кого; для «кусков мира» это true (всё на месте), для поблажек игроку — false.
+## A gameplay switch on Main (its "Aim" group): read live, `def` when there is no Main (the menu's
+## fight). Not a debug flag - `debug_overrides` does not gate it.
+func aim_flag(flag: StringName, def: bool) -> bool:
+	if _dbg_main == null or not is_instance_valid(_dbg_main):
+		_dbg_main = get_node_or_null("/root/Main")
+	var v = _dbg_main.get(flag) if _dbg_main != null else null
+	return v if v is bool else def
+
 func debug(flag: StringName, def: bool = true) -> bool:
 	if _dbg_main == null or not is_instance_valid(_dbg_main):
 		_dbg_main = get_node_or_null("/root/Main")
@@ -1777,6 +2140,7 @@ func _flush_progress() -> void:
 			"quests_done": quests_done,
 			"killed_kinds": killed_kinds,
 			"first_enemy_met": first_enemy_met,
+			"shop": _shop_save(),
 		}))
 		f.close()
 
@@ -1858,6 +2222,7 @@ func _load_progress() -> void:
 		killed_kinds.append(str(k2))
 	first_enemy_met = data.get("first_enemy_met", false) == true
 	_settle_licences()
+	_shop_load(data.get("shop"))
 
 func _notification(what: int) -> void:
 	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем
@@ -2037,6 +2402,64 @@ enum Block {
 	MARLIT_DRILL = 76,      # 2×2×2: a housing on a back plate, a stepped toothed bit (art/marlit_drill.py)
 	MARLIT_LASER_DRILL = 77, # 2×2×2: a lens stack with three focusing prongs, a 3 m beam (art/marlit_cutters.py)
 	MARLIT_SAW = 78,        # 2×1×2: a flat circular blade in a clamp on a mount plate (art/marlit_cutters.py)
+	# AERO: stub blocks on the Falsus models, tinted (G.STUB_BASE, stub_tint.gd), with Aero's numbers.
+	AERO_CABIN = 79,
+	AERO_BLOCK = 80,
+	AERO_BLOCK2 = 81,
+	AERO_BLOCK3 = 82,
+	AERO_HALF = 83,
+	AERO_HALF2 = 84,
+	AERO_WEDGE = 85,
+	AERO_ARMOR = 86,
+	AERO_ARMOR2 = 87,
+	AERO_ARMOR4 = 88,
+	AERO_ARMOR9 = 89,
+	AERO_SMALL_WHEEL = 90,
+	AERO_WHEEL = 91,
+	AERO_BIG_WHEEL = 92,
+	AERO_GUN = 93,
+	AERO_SHOTGUN = 94,
+	AERO_LASER = 95,
+	AERO_ROCKET = 96,
+	AERO_CANNON = 97,
+	AERO_MORTAR = 98,
+	AERO_DRILL = 99,
+	AERO_SOLAR = 100,
+	AERO_BATTERY = 101,
+	AERO_REGEN = 102,
+	AERO_SHIELD = 103,
+	AERO_WIRELESS = 104,
+	AERO_SUPPORT = 105,
+	AERO_ROT_SUPPORT = 106,
+	# STRYX: stub blocks on the Falsus models, tinted (G.STUB_BASE, stub_tint.gd), with Stryx's numbers.
+	STRYX_CABIN = 107,
+	STRYX_BLOCK = 108,
+	STRYX_BLOCK2 = 109,
+	STRYX_BLOCK3 = 110,
+	STRYX_HALF = 111,
+	STRYX_HALF2 = 112,
+	STRYX_WEDGE = 113,
+	STRYX_ARMOR = 114,
+	STRYX_ARMOR2 = 115,
+	STRYX_ARMOR4 = 116,
+	STRYX_ARMOR9 = 117,
+	STRYX_SMALL_WHEEL = 118,
+	STRYX_WHEEL = 119,
+	STRYX_BIG_WHEEL = 120,
+	STRYX_GUN = 121,
+	STRYX_SHOTGUN = 122,
+	STRYX_LASER = 123,
+	STRYX_ROCKET = 124,
+	STRYX_CANNON = 125,
+	STRYX_MORTAR = 126,
+	STRYX_DRILL = 127,
+	STRYX_SOLAR = 128,
+	STRYX_BATTERY = 129,
+	STRYX_REGEN = 130,
+	STRYX_SHIELD = 131,
+	STRYX_WIRELESS = 132,
+	STRYX_SUPPORT = 133,
+	STRYX_ROT_SUPPORT = 134,
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -2113,6 +2536,62 @@ enum Block {
 @onready var marlit_saw_scene: PackedScene = preload("res://blocks/scenes/marlit_saw.tscn")
 @onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
 @onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
+@onready var aero_cabin_scene: PackedScene = preload("res://blocks/scenes/aero_cabin.tscn")
+@onready var aero_block_scene: PackedScene = preload("res://blocks/scenes/aero_block.tscn")
+@onready var aero_block2_scene: PackedScene = preload("res://blocks/scenes/aero_block2.tscn")
+@onready var aero_block3_scene: PackedScene = preload("res://blocks/scenes/aero_block3.tscn")
+@onready var aero_half_scene: PackedScene = preload("res://blocks/scenes/aero_half.tscn")
+@onready var aero_half2_scene: PackedScene = preload("res://blocks/scenes/aero_half2.tscn")
+@onready var aero_wedge_scene: PackedScene = preload("res://blocks/scenes/aero_wedge.tscn")
+@onready var aero_armor_scene: PackedScene = preload("res://blocks/scenes/aero_armor.tscn")
+@onready var aero_armor2_scene: PackedScene = preload("res://blocks/scenes/aero_armor2.tscn")
+@onready var aero_armor4_scene: PackedScene = preload("res://blocks/scenes/aero_armor4.tscn")
+@onready var aero_armor9_scene: PackedScene = preload("res://blocks/scenes/aero_armor9.tscn")
+@onready var aero_small_wheel_scene: PackedScene = preload("res://blocks/scenes/aero_small_wheel.tscn")
+@onready var aero_wheel_scene: PackedScene = preload("res://blocks/scenes/aero_wheel.tscn")
+@onready var aero_big_wheel_scene: PackedScene = preload("res://blocks/scenes/aero_big_wheel.tscn")
+@onready var aero_gun_scene: PackedScene = preload("res://blocks/scenes/aero_gun.tscn")
+@onready var aero_shotgun_scene: PackedScene = preload("res://blocks/scenes/aero_shotgun.tscn")
+@onready var aero_laser_scene: PackedScene = preload("res://blocks/scenes/aero_laser.tscn")
+@onready var aero_rocket_scene: PackedScene = preload("res://blocks/scenes/aero_rocket.tscn")
+@onready var aero_cannon_scene: PackedScene = preload("res://blocks/scenes/aero_cannon.tscn")
+@onready var aero_mortar_scene: PackedScene = preload("res://blocks/scenes/aero_mortar.tscn")
+@onready var aero_drill_scene: PackedScene = preload("res://blocks/scenes/aero_drill.tscn")
+@onready var aero_solar_scene: PackedScene = preload("res://blocks/scenes/aero_solar.tscn")
+@onready var aero_battery_scene: PackedScene = preload("res://blocks/scenes/aero_battery.tscn")
+@onready var aero_regen_scene: PackedScene = preload("res://blocks/scenes/aero_regen.tscn")
+@onready var aero_shield_scene: PackedScene = preload("res://blocks/scenes/aero_shield.tscn")
+@onready var aero_wireless_scene: PackedScene = preload("res://blocks/scenes/aero_wireless.tscn")
+@onready var aero_support_scene: PackedScene = preload("res://blocks/scenes/aero_support.tscn")
+@onready var aero_rot_support_scene: PackedScene = preload("res://blocks/scenes/aero_rot_support.tscn")
+@onready var stryx_cabin_scene: PackedScene = preload("res://blocks/scenes/stryx_cabin.tscn")
+@onready var stryx_block_scene: PackedScene = preload("res://blocks/scenes/stryx_block.tscn")
+@onready var stryx_block2_scene: PackedScene = preload("res://blocks/scenes/stryx_block2.tscn")
+@onready var stryx_block3_scene: PackedScene = preload("res://blocks/scenes/stryx_block3.tscn")
+@onready var stryx_half_scene: PackedScene = preload("res://blocks/scenes/stryx_half.tscn")
+@onready var stryx_half2_scene: PackedScene = preload("res://blocks/scenes/stryx_half2.tscn")
+@onready var stryx_wedge_scene: PackedScene = preload("res://blocks/scenes/stryx_wedge.tscn")
+@onready var stryx_armor_scene: PackedScene = preload("res://blocks/scenes/stryx_armor.tscn")
+@onready var stryx_armor2_scene: PackedScene = preload("res://blocks/scenes/stryx_armor2.tscn")
+@onready var stryx_armor4_scene: PackedScene = preload("res://blocks/scenes/stryx_armor4.tscn")
+@onready var stryx_armor9_scene: PackedScene = preload("res://blocks/scenes/stryx_armor9.tscn")
+@onready var stryx_small_wheel_scene: PackedScene = preload("res://blocks/scenes/stryx_small_wheel.tscn")
+@onready var stryx_wheel_scene: PackedScene = preload("res://blocks/scenes/stryx_wheel.tscn")
+@onready var stryx_big_wheel_scene: PackedScene = preload("res://blocks/scenes/stryx_big_wheel.tscn")
+@onready var stryx_gun_scene: PackedScene = preload("res://blocks/scenes/stryx_gun.tscn")
+@onready var stryx_shotgun_scene: PackedScene = preload("res://blocks/scenes/stryx_shotgun.tscn")
+@onready var stryx_laser_scene: PackedScene = preload("res://blocks/scenes/stryx_laser.tscn")
+@onready var stryx_rocket_scene: PackedScene = preload("res://blocks/scenes/stryx_rocket.tscn")
+@onready var stryx_cannon_scene: PackedScene = preload("res://blocks/scenes/stryx_cannon.tscn")
+@onready var stryx_mortar_scene: PackedScene = preload("res://blocks/scenes/stryx_mortar.tscn")
+@onready var stryx_drill_scene: PackedScene = preload("res://blocks/scenes/stryx_drill.tscn")
+@onready var stryx_solar_scene: PackedScene = preload("res://blocks/scenes/stryx_solar.tscn")
+@onready var stryx_battery_scene: PackedScene = preload("res://blocks/scenes/stryx_battery.tscn")
+@onready var stryx_regen_scene: PackedScene = preload("res://blocks/scenes/stryx_regen.tscn")
+@onready var stryx_shield_scene: PackedScene = preload("res://blocks/scenes/stryx_shield.tscn")
+@onready var stryx_wireless_scene: PackedScene = preload("res://blocks/scenes/stryx_wireless.tscn")
+@onready var stryx_support_scene: PackedScene = preload("res://blocks/scenes/stryx_support.tscn")
+@onready var stryx_rot_support_scene: PackedScene = preload("res://blocks/scenes/stryx_rot_support.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
@@ -2132,7 +2611,7 @@ enum Block {
 const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block.ROT_SUPPORT,
 		Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
 func is_stationary(bt: int) -> bool:
-	return STATIONARY_BLOCKS.has(int(bt))
+	return STATIONARY_BLOCKS.has(base_block(bt))       # a stub support anchors as its base does
 
 ## THE ORDER OF THESE LISTS IS THE ORDER THE PLAYER SEES (`block_order`: the garage's shop and
 ## inventory, the build globe's rings), and so is the order of the keys - the shop's filter column
@@ -2148,16 +2627,19 @@ const BLOCK_CATEGORIES := {
 		Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT,
 		Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB, Block.MARLIT_LONG_HALF, Block.MARLIT_OCTO,
 		Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER, Block.MARLIT_BRACKET,
-		Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8],
+		Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8,
+		Block.AERO_CABIN, Block.AERO_BLOCK, Block.AERO_BLOCK2, Block.AERO_BLOCK3, Block.AERO_HALF, Block.AERO_HALF2, Block.AERO_WEDGE, Block.AERO_ARMOR, Block.AERO_ARMOR2, Block.AERO_ARMOR4, Block.AERO_ARMOR9, Block.AERO_SUPPORT, Block.AERO_ROT_SUPPORT,
+		Block.STRYX_CABIN, Block.STRYX_BLOCK, Block.STRYX_BLOCK2, Block.STRYX_BLOCK3, Block.STRYX_HALF, Block.STRYX_HALF2, Block.STRYX_WEDGE, Block.STRYX_ARMOR, Block.STRYX_ARMOR2, Block.STRYX_ARMOR4, Block.STRYX_ARMOR9, Block.STRYX_SUPPORT, Block.STRYX_ROT_SUPPORT],
 	# WHEELS are their own list (the player's call): among the hull blocks they were six entries
 	# out of thirty-odd, and a wheel is the one part a build cannot do without. `is_wheel` is the
 	# same set and must stay so.
 	"wheels":  [Block.SMALL_WHEEL, Block.WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
-		Block.MARLIT_WHEEL],
+		Block.MARLIT_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL],
 	"attack":  [Block.GUN, Block.SHOTGUN, Block.LASER, Block.ROCKET, Block.POUND_CANNON, Block.MORTAR,
 		Block.SMALL_DRILL, Block.DRILL,
 		Block.MARLIT_DRILL, Block.MARLIT_SAW, Block.MARLIT_LASER_DRILL, Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
-		Block.MARLIT_MORTAR],
+		Block.MARLIT_MORTAR, Block.AERO_DRILL, Block.AERO_GUN, Block.AERO_SHOTGUN, Block.AERO_LASER, Block.AERO_ROCKET, Block.AERO_CANNON, Block.AERO_MORTAR,
+		Block.STRYX_DRILL, Block.STRYX_GUN, Block.STRYX_SHOTGUN, Block.STRYX_LASER, Block.STRYX_ROCKET, Block.STRYX_CANNON, Block.STRYX_MORTAR],
 	# Along the chain: what digs and picks up, what carries, what works the material, what keeps
 	# and sells it, then the two that handle loose blocks.
 	"factory": [Block.AUTO_MINER, Block.COLLECTOR, Block.RECEIVER,
@@ -2169,7 +2651,8 @@ const BLOCK_CATEGORIES := {
 	# still shows under Power (the radar, today), so a new block never vanishes from the shop.
 	"power":   [Block.SOLAR, Block.GENERATOR, Block.BATTERY, Block.WIRELESS_CHARGER,
 		Block.SHIELD, Block.REGEN,
-		Block.MARLIT_SOLAR, Block.MARLIT_BATTERY, Block.MARLIT_WIRELESS, Block.MARLIT_REGEN],
+		Block.MARLIT_SOLAR, Block.MARLIT_BATTERY, Block.MARLIT_WIRELESS, Block.MARLIT_REGEN,
+		Block.AERO_SOLAR, Block.AERO_BATTERY, Block.AERO_WIRELESS, Block.AERO_SHIELD, Block.AERO_REGEN, Block.STRYX_SOLAR, Block.STRYX_BATTERY, Block.STRYX_WIRELESS, Block.STRYX_SHIELD, Block.STRYX_REGEN],
 }
 
 ## A block's place in every list the player scrolls: its category, then its place in that list. A
@@ -2264,20 +2747,155 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_SAW: return marlit_saw_scene
 		Block.MARLIT_BATTERY: return marlit_battery_scene
 		Block.MARLIT_WIRELESS: return marlit_wireless_scene
+		Block.AERO_CABIN: return aero_cabin_scene
+		Block.AERO_BLOCK: return aero_block_scene
+		Block.AERO_BLOCK2: return aero_block2_scene
+		Block.AERO_BLOCK3: return aero_block3_scene
+		Block.AERO_HALF: return aero_half_scene
+		Block.AERO_HALF2: return aero_half2_scene
+		Block.AERO_WEDGE: return aero_wedge_scene
+		Block.AERO_ARMOR: return aero_armor_scene
+		Block.AERO_ARMOR2: return aero_armor2_scene
+		Block.AERO_ARMOR4: return aero_armor4_scene
+		Block.AERO_ARMOR9: return aero_armor9_scene
+		Block.AERO_SMALL_WHEEL: return aero_small_wheel_scene
+		Block.AERO_WHEEL: return aero_wheel_scene
+		Block.AERO_BIG_WHEEL: return aero_big_wheel_scene
+		Block.AERO_GUN: return aero_gun_scene
+		Block.AERO_SHOTGUN: return aero_shotgun_scene
+		Block.AERO_LASER: return aero_laser_scene
+		Block.AERO_ROCKET: return aero_rocket_scene
+		Block.AERO_CANNON: return aero_cannon_scene
+		Block.AERO_MORTAR: return aero_mortar_scene
+		Block.AERO_DRILL: return aero_drill_scene
+		Block.AERO_SOLAR: return aero_solar_scene
+		Block.AERO_BATTERY: return aero_battery_scene
+		Block.AERO_REGEN: return aero_regen_scene
+		Block.AERO_SHIELD: return aero_shield_scene
+		Block.AERO_WIRELESS: return aero_wireless_scene
+		Block.AERO_SUPPORT: return aero_support_scene
+		Block.AERO_ROT_SUPPORT: return aero_rot_support_scene
+		Block.STRYX_CABIN: return stryx_cabin_scene
+		Block.STRYX_BLOCK: return stryx_block_scene
+		Block.STRYX_BLOCK2: return stryx_block2_scene
+		Block.STRYX_BLOCK3: return stryx_block3_scene
+		Block.STRYX_HALF: return stryx_half_scene
+		Block.STRYX_HALF2: return stryx_half2_scene
+		Block.STRYX_WEDGE: return stryx_wedge_scene
+		Block.STRYX_ARMOR: return stryx_armor_scene
+		Block.STRYX_ARMOR2: return stryx_armor2_scene
+		Block.STRYX_ARMOR4: return stryx_armor4_scene
+		Block.STRYX_ARMOR9: return stryx_armor9_scene
+		Block.STRYX_SMALL_WHEEL: return stryx_small_wheel_scene
+		Block.STRYX_WHEEL: return stryx_wheel_scene
+		Block.STRYX_BIG_WHEEL: return stryx_big_wheel_scene
+		Block.STRYX_GUN: return stryx_gun_scene
+		Block.STRYX_SHOTGUN: return stryx_shotgun_scene
+		Block.STRYX_LASER: return stryx_laser_scene
+		Block.STRYX_ROCKET: return stryx_rocket_scene
+		Block.STRYX_CANNON: return stryx_cannon_scene
+		Block.STRYX_MORTAR: return stryx_mortar_scene
+		Block.STRYX_DRILL: return stryx_drill_scene
+		Block.STRYX_SOLAR: return stryx_solar_scene
+		Block.STRYX_BATTERY: return stryx_battery_scene
+		Block.STRYX_REGEN: return stryx_regen_scene
+		Block.STRYX_SHIELD: return stryx_shield_scene
+		Block.STRYX_WIRELESS: return stryx_wireless_scene
+		Block.STRYX_SUPPORT: return stryx_support_scene
+		Block.STRYX_ROT_SUPPORT: return stryx_rot_support_scene
 	return null
 
 ## A MACHINE'S CORE IS ANY CABIN, and this is the one place that says which blocks are cabins. Every
 ## "is this the cabin" in the game asks here: thirty places compared with Block.CABIN directly, and
 ## a second faction's cabin would have been a block that does not hold its machine together.
-const CABIN_BLOCKS := [Block.CABIN, Block.MARLIT_CABIN]
+## AERO AND STRYX ARE STUBS FOR NOW (the player's call: "a heap of stubs, every block as Marlit has"):
+## each block is its Falsus base's scene inherited (`blocks/scenes/aero_*.tscn`, `stryx_*.tscn`) with
+## its own `block`, tinted by its faction (`FACTIONS[f]["tint"]`, stub_tint.gd), and its own numbers in
+## the tables - Aero light and fragile, its guns lighter and a little softer, its wheels pulling harder;
+## Stryx Falsus's weight, much tougher and hitting harder (`FACTION_DAMAGE`). Geometry and roles
+## (footprint, fitted collider, what kind of block it is) are the base's: `base_block` is the door.
+## A faction's own model replaces a stub's scene and its row here goes.
+const STUB_BASE := {
+	Block.AERO_CABIN: Block.CABIN,
+	Block.AERO_BLOCK: Block.BLOCK,
+	Block.AERO_BLOCK2: Block.BLOCK2,
+	Block.AERO_BLOCK3: Block.BLOCK3,
+	Block.AERO_HALF: Block.HALF_BLOCK,
+	Block.AERO_HALF2: Block.HALF_BLOCK2,
+	Block.AERO_WEDGE: Block.WEDGE2,
+	Block.AERO_ARMOR: Block.ARMOR,
+	Block.AERO_ARMOR2: Block.ARMOR2,
+	Block.AERO_ARMOR4: Block.ARMOR4,
+	Block.AERO_ARMOR9: Block.ARMOR9,
+	Block.AERO_SMALL_WHEEL: Block.SMALL_WHEEL,
+	# AERO_WHEEL has its own model (art/aero_wheels.py): no stub base.
+	Block.AERO_BIG_WHEEL: Block.BIG_WHEEL,
+	Block.AERO_GUN: Block.GUN,
+	Block.AERO_SHOTGUN: Block.SHOTGUN,
+	Block.AERO_LASER: Block.LASER,
+	Block.AERO_ROCKET: Block.ROCKET,
+	Block.AERO_CANNON: Block.POUND_CANNON,
+	Block.AERO_MORTAR: Block.MORTAR,
+	Block.AERO_DRILL: Block.DRILL,
+	Block.AERO_SOLAR: Block.SOLAR,
+	Block.AERO_BATTERY: Block.BATTERY,
+	Block.AERO_REGEN: Block.REGEN,
+	Block.AERO_SHIELD: Block.SHIELD,
+	Block.AERO_WIRELESS: Block.WIRELESS_CHARGER,
+	Block.AERO_SUPPORT: Block.SUPPORT,
+	Block.AERO_ROT_SUPPORT: Block.ROT_SUPPORT,
+	Block.STRYX_CABIN: Block.CABIN,
+	Block.STRYX_BLOCK: Block.BLOCK,
+	Block.STRYX_BLOCK2: Block.BLOCK2,
+	Block.STRYX_BLOCK3: Block.BLOCK3,
+	Block.STRYX_HALF: Block.HALF_BLOCK,
+	Block.STRYX_HALF2: Block.HALF_BLOCK2,
+	Block.STRYX_WEDGE: Block.WEDGE2,
+	Block.STRYX_ARMOR: Block.ARMOR,
+	Block.STRYX_ARMOR2: Block.ARMOR2,
+	Block.STRYX_ARMOR4: Block.ARMOR4,
+	Block.STRYX_ARMOR9: Block.ARMOR9,
+	Block.STRYX_SMALL_WHEEL: Block.SMALL_WHEEL,
+	Block.STRYX_WHEEL: Block.WHEEL,
+	Block.STRYX_BIG_WHEEL: Block.BIG_WHEEL,
+	Block.STRYX_GUN: Block.GUN,
+	Block.STRYX_SHOTGUN: Block.SHOTGUN,
+	Block.STRYX_LASER: Block.LASER,
+	Block.STRYX_ROCKET: Block.ROCKET,
+	Block.STRYX_CANNON: Block.POUND_CANNON,
+	Block.STRYX_MORTAR: Block.MORTAR,
+	Block.STRYX_DRILL: Block.DRILL,
+	Block.STRYX_SOLAR: Block.SOLAR,
+	Block.STRYX_BATTERY: Block.BATTERY,
+	Block.STRYX_REGEN: Block.REGEN,
+	Block.STRYX_SHIELD: Block.SHIELD,
+	Block.STRYX_WIRELESS: Block.WIRELESS_CHARGER,
+	Block.STRYX_SUPPORT: Block.SUPPORT,
+	Block.STRYX_ROT_SUPPORT: Block.ROT_SUPPORT,
+}
+
+func base_block(bt) -> int:
+	if bt == null:
+		return int(Block.EMPTY)
+	return int(STUB_BASE.get(int(bt), int(bt)))
+
+## What a faction's weapons hit for against Falsus's (WeaponBlock._scale_damage, the one door).
+const FACTION_DAMAGE := {"aero": 0.85, "stryx": 1.2}
+
+func faction_damage(bt: int) -> float:
+	var f: String = String((BLOCK_META.get(bt, {}) as Dictionary).get("f", ""))
+	return float(FACTION_DAMAGE.get(f, 1.0))
+
+const CABIN_BLOCKS := [Block.CABIN, Block.MARLIT_CABIN, Block.AERO_CABIN, Block.STRYX_CABIN]
 
 func is_cabin(bt) -> bool:
 	return bt != null and int(bt) in CABIN_BLOCKS
 
 ## WHAT ANCHORS A MACHINE, of either faction - asked here, never by comparing with Block.SUPPORT, for
 ## the reason CABIN_BLOCKS gives above.
-const SUPPORT_BLOCKS := [Block.SUPPORT, Block.ROT_SUPPORT, Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
-const ROT_SUPPORT_BLOCKS := [Block.ROT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
+const SUPPORT_BLOCKS := [Block.SUPPORT, Block.ROT_SUPPORT, Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT,
+		Block.AERO_SUPPORT, Block.AERO_ROT_SUPPORT, Block.STRYX_SUPPORT, Block.STRYX_ROT_SUPPORT]
+const ROT_SUPPORT_BLOCKS := [Block.ROT_SUPPORT, Block.MARLIT_ROT_SUPPORT, Block.AERO_ROT_SUPPORT, Block.STRYX_ROT_SUPPORT]
 
 func is_support(bt) -> bool:
 	return bt != null and int(bt) in SUPPORT_BLOCKS
@@ -2288,4 +2906,4 @@ func is_rot_support(bt) -> bool:
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
 func is_wheel(bt: int) -> bool:
 	return int(bt) in [Block.WHEEL, Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
-			Block.MARLIT_WHEEL]
+			Block.MARLIT_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL]

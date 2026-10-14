@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://dsi4gfrcfk460" path="res://blocks/scenes/big_wheel.tscn" id="1_base"]
+
+[node name="wheel" instance=ExtResource("1_base")]
+block = 92
+weight = 25.5
+wheel_power = 4560.0
+metadata/stub_faction = "aero"

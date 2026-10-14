@@ -263,7 +263,7 @@ func _energy_tick(delta: float) -> void:
 					# a fallback for scenes without the battery script.
 					var cap = b.get("capacity")
 					_battery_cap += float(cap) if cap != null else BATTERY_CAP
-				elif bt == G.Block.SOLAR:
+				elif G.base_block(bt) == G.Block.SOLAR:
 					_solar_count += 1.0
 				elif b.has_method("solar_units"):
 					_solar_count += b.solar_units()     # Marlit's array: four panels, only lying open

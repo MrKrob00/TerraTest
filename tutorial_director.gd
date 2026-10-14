@@ -511,45 +511,45 @@ func _on_tutorial_finished() -> void:
 	_say_lines(["That is the whole of it. Take it for a drive — the ground here is not level anywhere."])
 	_first_enemy_after_delay()
 
-## СКОЛЬКО ИГРОК ЕЗДИТ ОДИН, прежде чем приедет первый враг. Раньше разведчик появлялся В ТОТ
-## ЖЕ КАДР, где закрылся последний шаг обучения: собрал машину — и сразу дерёшься, ни разу не
-## тронувшись с места, то есть первое, что игрок узнаёт о своей машине, — это как её ломают.
-## Пауза не «передышка», а возможность попробовать то, чему только что научили; к ней сверху
-## добавляется падение врага с drop_height и его дорога до игрока.
-##
-## САМО ЧИСЛО ЖИВЁТ У СПАВНЕРА (`first_spawn_delay`): ту же паузу держит и общий поток врагов,
-## и двумя числами они разъехались бы — «покататься» кончалось бы тем, что вместо разведчика
-## первым приезжает кто-то другой. Здесь только запасное значение на случай, если спавнера в
-## сцене нет вовсе.
-const FIRST_ENEMY_DELAY_FALLBACK := 8.0
+## THE SCOUT COMES ONCE THE PLAYER DRIVES, AND LANDS RIGHT BY THEM (the player's call): after
+## SCOUT_PAUSE (the Mechanic's line), as soon as the machine has gone SCOUT_MOVE from where the
+## tutorial ended, the scout is asked for SCOUT_NEAR ahead - inside the 200 m clearance, which only
+## guards machines that come by themselves. Its drop ring (enemy_spawner._hold_for_drop) stands
+## there for three seconds first, and the quest is released with it, so the marker leads to the
+## ring's middle before the machine is there.
+const SCOUT_PAUSE := 4.0
+const SCOUT_MOVE := 12.0
+const SCOUT_NEAR := Vector2(40.0, 55.0)
 
 func _first_enemy_after_delay() -> void:
-	# ПРИДЕРЖИВАЕМ КВЕСТ НА ВРЕМЯ ПАУЗЫ. Он объявится, когда разведчик появится в мире (см.
-	# _spawn_first_enemy), а не сейчас: иначе в журнале восемь секунд висит «уничтожь
-	# разведчика», которого ещё нет, и метке не на что показывать.
-	#
-	# Ставится ЗДЕСЬ, в том же потоке, что и снятие. В определении квестов было бы нельзя:
-	# Q.reload_from_progress чистит придержки при выборе слота, а он случается позже.
+	# ПРИДЕРЖИВАЕМ КВЕСТ, пока разведчика нет (см. _spawn_first_enemy): метке не на что показывать.
+	# Ставится ЗДЕСЬ, в том же потоке, что и снятие: Q.reload_from_progress чистит придержки при
+	# выборе слота, а он случается позже определения квестов.
 	var q0: Node = get_node_or_null("/root/Q")
 	if q0 != null and q0.has_method("hold_quest"):
 		q0.hold_quest("story_first_blood")
-	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	var delay: float = FIRST_ENEMY_DELAY_FALLBACK
-	var d = sp.get("first_spawn_delay") if sp != null else null
-	if d is float or d is int:
-		delay = float(d)
-	await get_tree().create_timer(delay).timeout
-	# ПОСЛЕ КАЖДОГО await — проверка (правило из CLAUDE.md): за восемь секунд игрок мог выйти
-	# в меню или погибнуть с перезагрузкой сцены, и режиссёра к этому моменту уже нет.
-	if not is_inside_tree():
-		return
+	await get_tree().create_timer(SCOUT_PAUSE).timeout
+	var from = null
+	var held: Node = null
+	while true:
+		# after every await (CLAUDE.md): the player may have left for the menu
+		if not is_inside_tree():
+			return
+		var v: Node = _vehicle()
+		if v is Node3D:
+			if v != held or from == null:
+				held = v                      # a new machine (a respawn): measure from where it is
+				from = (v as Node3D).global_position
+			elif (from as Vector3).distance_squared_to((v as Node3D).global_position) >= SCOUT_MOVE * SCOUT_MOVE:
+				break
+		await get_tree().create_timer(0.25).timeout
 	_spawn_first_enemy()
 
 func _spawn_first_enemy() -> void:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	var enemy: Node = null
 	if sp != null and sp.has_method("spawn_scout_near_player"):
-		enemy = sp.spawn_scout_near_player()
+		enemy = sp.spawn_scout_near_player(SCOUT_NEAR.x, SCOUT_NEAR.y, true)
 	# КВЕСТ ОБЪЯВЛЯЕТСЯ ЗДЕСЬ, А НЕ ПО КОНЦУ ОБУЧЕНИЯ. Снимаем придержку ровно тогда, когда
 	# цель появилась в мире — тогда метка живая с первой секунды, а не через восемь.
 	#

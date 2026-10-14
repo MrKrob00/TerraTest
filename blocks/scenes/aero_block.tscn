@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://3ixxsglc72w5" path="res://blocks/scenes/block.tscn" id="1_base"]
+
+[node name="Block" instance=ExtResource("1_base")]
+block = 80
+metadata/stub_faction = "aero"

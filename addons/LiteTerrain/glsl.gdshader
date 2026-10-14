@@ -1,3 +1,4 @@
+
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 // THE FAST GROUND (ChunkTerrain.fast_ground, on while shadows are off): the same code with this line
@@ -10,8 +11,8 @@ render_mode diffuse_lambert, specular_disabled;
 // WHERE EACH SETTING IS TUNED: in the map's inspector. Its `surface_material`
 // (addons/LiteTerrain/terrain_shader.tres) carries this shader and shows every uniform; the node
 // draws with a copy of it, into which its `biomes` write the colours, rock, snow, grass and canyon
-// bands (TerrainBiomes.apply_to_material) and the game the grass fade, the trample and the
-// corruption map - so those few are tuned in the biomes, everything else on the material.
+// bands (TerrainBiomes.apply_to_material) and the game the grass fade and the trample - so those
+// few are tuned in the biomes, everything else on the material.
 
 group_uniforms Texture;
 // The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived
@@ -83,21 +84,6 @@ uniform vec2  trample_center = vec2(0.0);
 uniform float trample_size   = 130.0;
 group_uniforms;
 
-group_uniforms Corruption;
-// "Corrupted data" zones: a blue-violet per-cell glitch over the ground, in patches across
-// the world, flickering over time and GLOWING (EMISSION).
-uniform float corrupt_amount    : hint_range(0.0, 1.0)    = 1.0;    // master (0 = off)
-// The zones come from a state map (maintained by grass.gd). Its red channel is how corrupted
-// the chunk is; filter_linear softens the zone edges.
-uniform sampler2D corrupt_map : hint_default_black, filter_linear;
-uniform vec2  corrupt_world_center = vec2(0.0);   // world XZ centre of the map
-uniform float corrupt_world_size   = 1984.0;      // world size of the map, in units
-uniform float glitch_cell       : hint_range(0.3, 4.0)    = 1.0;    // glitch "pixel" size, in world units
-uniform float glitch_speed      : hint_range(0.0, 20.0)   = 7.0;    // flicker rate
-uniform vec3  corrupt_cyan    : source_color = vec3(0.15, 0.85, 1.0);
-uniform vec3  corrupt_magenta : source_color = vec3(0.72, 0.16, 1.0);
-uniform float corrupt_glow      : hint_range(0.0, 4.0)    = 1.6;    // glow strength
-group_uniforms;
 
 // The zone colour and the slope-driven fade into rock are computed in the VERTEX stage
 // (v_base_col) and interpolated: the terrain is fill-bound and there are orders of magnitude
@@ -147,14 +133,23 @@ const float SH_FADE = 1.0 / 6.0;
 #endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
+// THE PLAYER'S TEST SWITCHES (garage settings, ChunkTerrain.ground_opts; all off = the ground as it
+// was): defines, not uniforms - a branch on a uniform still costs the fill on the phone, a define
+// takes the code out of the variant. NO_COLOR_NOISE drops the per-pixel colour hash, DETAIL_NEAR
+// draws the detail only out to DETAIL_FAR (faded in DETAIL_FADE before it) instead of to the solid
+// haze, ONE_PLANE takes the detail on the ground's plane everywhere (canyon walls streak).
+#ifdef DETAIL_NEAR
+const float DETAIL_FAR = 80.0;
+const float DETAIL_FADE = 20.0;
+varying float v_det;
+#endif
 
 varying vec3  v_base_col;
 varying float v_is_grass;
 varying float v_desert;       // bare sand: what the ripples are drawn on
 varying float v_salt;         // the salt flat: what the cracks are drawn on
-varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
+varying vec3  v_wpos;         // world position — the wall UV below and the shadow lookup
 varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
-varying float v_corrupt;      // strength of the corrupted zone (0..1)
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -205,6 +200,9 @@ void vertex() {
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
     v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
+#ifdef DETAIL_NEAR
+    v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
+#endif
 #ifdef FAST_GROUND
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
@@ -224,17 +222,6 @@ void vertex() {
     }
 #endif
 
-    // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
-    // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
-    float cstate = 0.0;
-    // Uniform branch: with corrupt_amount == 0 there is no vertex texture fetch at all.
-    if (corrupt_amount > 0.001) {
-        vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
-        if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
-            cstate = textureLod(corrupt_map, cuv, 0.0).r;
-        }
-    }
-    v_corrupt   = cstate * corrupt_amount;
 
     // The biome masks are baked into the vertex COLOR by the terrain (chunk_terrain._biome_colour).
     float biome_grass = COLOR.b;
@@ -319,12 +306,22 @@ void fragment() {
     // on faces steeper than 45 deg, where both projections read alike. Per FRAGMENT: picked per
     // vertex, one triangle's corners would sit in different planes.
     // Под сплошной дымкой попиксельной детали не видно — не считаем её вовсе (см. шапку).
+#ifdef DETAIL_NEAR
+    if (v_det > 0.0) {
+#else
     if (v_haze < HAZE_FLAT) {
+#endif
+#ifdef ONE_PLANE
+        vec2 wall = v_wpos.xz;
+#else
         vec2 wall = abs(v_wnrm.y) > 0.5
                 ? v_wpos.xz                                                  // пол и склоны
                 : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
+#endif
+#ifndef NO_COLOR_NOISE
         vec2 noise_uv = floor(wall / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
         base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
+#endif
         // one fetch: the detail masks (see the uniforms)
         vec4 dt = texture(ground_detail, wall / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
@@ -332,6 +329,9 @@ void fragment() {
         k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
         k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
+#ifdef DETAIL_NEAR
+        k = mix(1.0, k, v_det);
+#endif
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
@@ -356,23 +356,6 @@ void fragment() {
 #endif
     ROUGHNESS = 0.9;
 
-    // ── Corrupted zones: a blue-violet per-cell glitch ────────────────────────────
-    // Quantise the world into glitch_cell squares, then hash each cell (plus time, which makes
-    // it flicker) into cyan / magenta / a dark "bit". Patchy via a second hash, and it glows.
-    EMISSION = vec3(0.0);
-    if (v_corrupt > 0.01) {
-        vec2 cell = floor(v_wpos.xz / glitch_cell);
-        float t = floor(TIME * glitch_speed);
-        float n = hash2D(cell + vec2(t * 1.7, t * 0.9));
-        vec3 g = (n < 0.42) ? corrupt_cyan : (n < 0.84 ? corrupt_magenta : vec3(0.02, 0.02, 0.05));
-        float k = v_corrupt * step(0.25, hash2D(cell * 1.3 + vec2(5.0)));   // not a solid fill
-        ALBEDO   = mix(ALBEDO, g, k);
-        EMISSION = g * corrupt_glow * k;
-    }
-
-    // ДЫМКА ПОСЛЕДНЕЙ, поверх всего: она про воздух между камерой и поверхностью, а значит
-    // гасит и глитч заражённой зоны тоже — иначе на горизонте светились бы клетки, у которых
-    // сама земля уже растворилась.
-    EMISSION = EMISSION * (1.0 - v_haze);
+    // the haze last, over everything: the air between the camera and the surface
     FOG = vec4(world_haze.rgb, v_haze * haze_range.z);
 }
