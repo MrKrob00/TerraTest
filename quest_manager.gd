@@ -201,6 +201,20 @@ func _seed_demo() -> void:
 	])
 	requires("arc_yellow", ["arc_hold"])
 
+	# ── AERO'S LICENCE: RACE AGAINST TIME (TerraTech's Venture licence, GSO grade 3) ───────────
+	# Aero deals with the fast: a course of gates out in the field, start to finish in under a minute
+	# (quest_arcs._race_*, race_track.gd). The course stays in the world after it, a track to beat.
+	add_quest("arc_aero", "Race Against Time", "", Type.STORY, 1, 15, "", 450, 70, 20, 3)
+	add_stages("arc_aero", [
+		{"desc": "Reach Aero's course",
+		 "event": "quest_race_1", "goal": 1,
+		 "hint": "Aero does not care what your machine can carry. It cares how fast it gets there."},
+		{"desc": "Run the course in under a minute",
+		 "event": "quest_race_2", "goal": 1,
+		 "hint": "Through the start gate and the clock runs; every gate in order. Too slow - the start gate again."},
+	])
+	requires("arc_aero", ["arc_salvage"])
+
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])
 	requires("arc_hold", ["arc_solvent"])
@@ -326,8 +340,65 @@ func _seed_demo() -> void:
 		])
 		_find(cid)["faction"] = "marlit"
 
+	# ── AERO'S STORY (TerraTech's Venture campaign, the player's call: our names, their meaning) ──
+	# Plateau Run - a timed course that climbs; Stranded Racer (Mine Island Rescue) - an Aero machine
+	# stuck among hostiles, clear them off it; Loose Ground (A Slippery Slope) - a timed course down.
+	# One after another, on Aero's grades (quest_arcs COURSES, `_strand_*`).
+	_faction_story("aero", "aero_plateau", "Plateau Run", 40, 350, 70, 14, 1, [
+		{"desc": "Reach the foot of the plateau", "event": "quest_plateau_1", "goal": 1,
+		 "hint": "Aero wants to see your machine climb. The course starts at the bottom."},
+		{"desc": "Run the climb inside the time", "event": "quest_plateau_2", "goal": 1,
+		 "hint": "Every gate in order, up to the top. Too slow - back through the start gate."}])
+	_faction_story("aero", "aero_strand", "Stranded Racer", 41, 450, 85, 16, 2, [
+		{"desc": "Reach the stranded racer", "event": "quest_astrand_1", "goal": 1,
+		 "hint": "One of Aero's machines lost its wheels out there, and it is not alone."},
+		{"desc": "Clear the hostiles off it", "event": "quest_astrand_2", "goal": 1,
+		 "hint": "It cannot move and it cannot hold long. Everything hostile round it goes."}])
+	_faction_story("aero", "aero_descent", "Loose Ground", 42, 550, 100, 18, 3, [
+		{"desc": "Reach the top of the run", "event": "quest_descent_1", "goal": 1,
+		 "hint": "Downhill is fast and loose. Aero wants it fast."},
+		{"desc": "Run it down inside the time", "event": "quest_descent_2", "goal": 1,
+		 "hint": "Every gate in order, down to the bottom - on your wheels, not your roof."}])
+	requires("aero_strand", ["aero_plateau"])
+	requires("aero_descent", ["aero_strand"])
+
+	# ── AERO'S EVENTS: races and a chase (TerraTech's Venture board) ───────────────────────────
+	_faction_event("aero", "event_acourse", "Checkpoint Race", 260, 40, 8, 1, "acourse",
+			"Reach the start gate", "Run the course inside the time",
+			"A course of gates. Through each in order, against the clock.")
+	_faction_event("aero", "event_adrag", "Drag Strip", 220, 35, 7, 1, "adrag",
+			"Reach the strip", "Cover the strip inside the time",
+			"Two gates and a straight line between them. Nothing to it but speed.")
+	_faction_event("aero", "event_aslalom", "Slalom", 280, 45, 9, 2, "aslalom",
+			"Reach the start gate", "Weave through every gate inside the time",
+			"Every gate swings to the other side. Lose speed in the turns and you lose the run.")
+	add_quest("event_achase", "Pursuit", "", Type.EVENT, 1, 0, "", 320, 50, 10, 2)
+	add_stages("event_achase", [
+		{"desc": "Find the runner", "event": "quest_achase_1", "goal": 1,
+		 "hint": "Something fast is parked out there. It will not wait for you once it sees you."},
+		{"desc": "Catch it within a minute", "event": "quest_achase_2", "goal": 1,
+		 "hint": "It runs from the moment it sees you. Bring it down before it is gone."}])
+	_find("event_achase")["faction"] = "aero"
+
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
+
+## A story quest of another faction, with its stages: its grade, its XP, its emblem.
+func _faction_story(f: String, id: String, title: String, order: int, money: int, xp: int, rp: int,
+		grade: int, stages: Array) -> void:
+	add_quest(id, title, "", Type.STORY, 1, order, "", money, xp, rp, grade)
+	add_stages(id, stages)
+	_find(id)["faction"] = f
+
+## A two-stage event of another faction: reach, then do (the course events).
+func _faction_event(f: String, id: String, title: String, money: int, xp: int, rp: int, grade: int,
+		key: String, reach: String, run: String, hint: String) -> void:
+	add_quest(id, title, "", Type.EVENT, 1, 0, "", money, xp, rp, grade)
+	add_stages(id, [
+		{"desc": reach, "event": "quest_%s_1" % key, "goal": 1, "hint": hint},
+		{"desc": run, "event": "quest_%s_2" % key, "goal": 1,
+		 "hint": "Through the start gate and the clock runs. Too slow - the start gate again."}])
+	_find(id)["faction"] = f
 
 ## A Marlit story quest: an ordinary STORY quest under Marlit's flag (its grade, its XP, its emblem).
 func _marlit_story(id: String, title: String, desc: String, goal: int, order: int, event: String,
