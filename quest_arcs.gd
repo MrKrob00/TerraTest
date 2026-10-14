@@ -52,7 +52,6 @@ func _tick_arcs(delta: float) -> void:
 	# cargo and guard went INSIDE a mountain and its "reach" stage could never close.
 	if not G.world_ready():
 		return
-	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	_sweep_yellow_points()
 	_party_tick()
@@ -87,7 +86,6 @@ func _tick_arcs(delta: float) -> void:
 			"quest_cube2_2":       _tower_2(q, CUBES[1])
 			"quest_cube3_1":       _tower_1(q, CUBES[2])
 			"quest_cube3_2":       _tower_2(q, CUBES[2])
-			"quest_duel_1":        _duel_1(q)
 			# MARLIT'S EVENTS ARE THE SAME EVENTS WITH ANOTHER FACTION: the functions take their key
 			# from the stage ("quest_mgang_1" -> "mgang"), and the faction decides the enemies'
 			# builds (_faction_preset), the loot and whose XP it pays (Q.faction_of)
@@ -97,15 +95,12 @@ func _tick_arcs(delta: float) -> void:
 			"quest_msupply_2":     _supply_2(q)
 			"quest_mdefend_1":     _defend_1(q)
 			"quest_mdefend_2":     _defend_2(q)
-			"quest_mwaves_1":      _waves_1(q)
-			"quest_duel_2":        _duel_2(q)
 			"quest_gang_1":        _gang_1(q)
 			"quest_gang_2":        _gang_2(q)
 			"quest_supply_1":      _supply_1(q)
 			"quest_supply_2":      _supply_2(q)
 			"quest_defend_1":      _defend_1(q)
 			"quest_defend_2":      _defend_2(q)
-			"quest_waves_1":       _waves_1(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
 	_drop_orphans(polled)
@@ -141,7 +136,7 @@ func _update_safe_zones() -> void:
 ## WHAT STANDS IN A QUIET ZONE IS TAKEN AWAY (the player: the power site came up beside an enemy
 ## turret, which shot it to pieces). Every poll while a zone stands, for every hostile machine
 ## inside: an EVENT's (meta `QUEST_OWNER`, set at the one door `_ask_spawner`) drops that event as an
-## abandoned one is - its machines leave, it cools down and comes back elsewhere, the duel included;
+## abandoned one is - its machines leave, it cools down and comes back elsewhere;
 ## a MAIN QUEST's (a story quest's: a carrier, a tower, the champion; the scout, `story_scout`) stays,
 ## its quest needs it - it takes no target inside and drives out (`enemy_vehicle._leave_safe_zone`);
 ## anything else goes - the stream's, a raid's, a miner, a stronghold (`outposts` keeps its point and
@@ -157,7 +152,7 @@ func _sweep_safe_zones() -> void:
 		if int(q.get("type", -1)) != Q.Type.EVENT or q.get("done", false):
 			continue
 		var key := _ev_key(String(q.get("event", "")))
-		var pt = _duel_point if key == "duel" else _ev_point.get(key)
+		var pt = _ev_point.get(key)
 		if pt is Vector3 and safe_zone_at(pt as Vector3, EV_PARTY_RING) != null:
 			_drop_event(q)
 	var vr: Node = get_node_or_null("/root/Main/Vehicles")
@@ -185,9 +180,6 @@ func _sweep_safe_zones() -> void:
 ## An event dropped like an abandoned one: machines, point and orb gone, cooled down, skipped.
 func _drop_event(q: Dictionary) -> void:
 	var key := _ev_key(String(q.get("event", "")))
-	if key == "duel":
-		_drop_duel(q)
-		return
 	_ev_clear(key)
 	_ev_cool[String(q["id"])] = _event_cooldown()
 	Q.skip_quest(String(q["id"]))
@@ -214,24 +206,12 @@ func _drop_orphans(polled: Dictionary) -> void:
 	for k in keys:
 		if not polled.has(k):
 			_forget_event(String(k))
-	if not polled.has("duel") and (_duel_sent or _duel_point != null):
-		_forget_duel()
 
 func _forget_event(key: String) -> void:
 	_ev_ally.erase(key)
 	_supply_trap.erase(key)
 	_supply_opened.erase(key)
 	_ev_clear(key)
-
-func _forget_duel() -> void:
-	for m in [_duel_a, _duel_b]:
-		if is_instance_valid(m):
-			(m as Node).queue_free()
-	_duel_a = null
-	_duel_b = null
-	_duel_sent = false
-	_duel_point = null
-	_q_kills.erase("event_duel")
 
 ## A QUEST HANDED OUT AGAIN STARTS CLEAN (`Q.force_quest`, the proving ground). The branch's memory
 ## outlives the quest: forced a second time, the radar branch found its carrier "already dead" and
@@ -246,9 +226,6 @@ func forget_quest(id: String) -> void:
 	for st in q.get("stages", []):
 		var key := _ev_key(String((st as Dictionary).get("event", "")))
 		_forget_event(key)
-		if key == "duel":
-			_forget_duel()
-			_duel_cool = 0.0
 		var m = _carrier.get(key)
 		if is_instance_valid(m):
 			(m as Node).queue_free()
@@ -484,7 +461,7 @@ const CHAMPION_PRESET := 120              # blocks.MARLIT_CHAMPION
 var _yellow_point: Variant = null
 var _yellow_e: Node3D = null
 ## SENT, NOT "DEAD": a lost reference after a reload and a dead champion both read false through
-## is_instance_valid; only this flag, which lives in memory, tells them apart (as `_duel_sent`).
+## is_instance_valid; only this flag, which lives in memory, tells them apart.
 var _yellow_sent: bool = false
 
 func yellow_point() -> Variant:
@@ -1838,135 +1815,6 @@ func _on_tower_died(who, key: String) -> void:
 	_tower_dead[key] = true
 	_blow_tower_guards(key)
 
-# ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
-# Часть 1 — доехать до точки. Часть 2 — победить.
-#
-# Точка ставится не рядом и не за горизонтом: ровно настолько далеко, чтобы это была
-# ПОЕЗДКА, а не поворот головы, и чтобы по дороге игрок успел решить, ввязываться ли.
-## Насколько дуэлянты стоят друг от друга. Stage 1 ends at REACH_DIST (see _reached).
-const DUEL_GAP := 18.0
-## Сколько ждать перед тем, как событие может случиться снова, — общее для всех событий
-## (см. _event_cooldown в разделе «ПОВТОРЯЕМЫЕ СОБЫТИЯ»).
-
-var _duel_point: Variant = null      # куда ехать (Vector3) или null — точки ещё нет
-var _duel_a: Node3D = null
-var _duel_b: Node3D = null
-## ВЫСТАВЛЕНА ЛИ ДУЭЛЬ. Только этим и отличается «их добили» от «перезаход»: у мёртвого узла и у
-## потерянной ссылки `is_instance_valid` одинаково false. Флаг ЖИВЁТ В ПАМЯТИ — это и есть весь
-## его смысл, память теряется вместе с участниками.
-var _duel_sent: bool = false
-var _duel_cool: float = 0.0
-
-## Куда ведёт компас по этому событию. Публично — компас спрашивает отсюда, потому что цель
-## тут не предмет в мире (QuestProps), а просто координаты.
-func duel_point() -> Variant:
-	return _duel_point
-
-func _duel_1(q: Dictionary) -> void:
-	var p: Node3D = _player()
-	if p == null or _duel_abandoned(q):
-		return
-	if _duel_point == null:
-		_duel_point = _duel_pick_point()
-		return
-	# Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
-	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
-	# Once: this stage now polls until the player arrives, and every poll would send a new pair.
-	if not _duel_sent and not _spawn_duel(_duel_point as Vector3):
-		return
-	if not _reached(_duel_point):
-		return
-	Q.report(String(q["event"]), 1)
-
-## Точка дуэли: направление случайное, дистанция фиксированная — событие должно уводить игрока с
-## его маршрута, а не подворачиваться там, куда он и так ехал.
-func _duel_pick_point() -> Variant:
-	return _event_point()
-
-## The duel keeps its own state, so it never went through _ev_abandoned and stayed in the journal
-## however far the player went. Same rule as every event: farther than EV_ABANDON from the nearest of
-## the player's machines - the duel is dropped, its machines leave, and it cools down.
-func _duel_abandoned(q: Dictionary) -> bool:
-	if _duel_point == null:
-		return false
-	var at: Vector3 = _duel_point as Vector3
-	var live = _live_target("quest_duel_1")
-	if live is Vector3:
-		at = live
-	if _nearest_own_d2(at) <= EV_ABANDON * EV_ABANDON:
-		return false
-	_drop_duel(q)
-	return true
-
-func _drop_duel(q: Dictionary) -> void:
-	for m in [_duel_a, _duel_b]:
-		if is_instance_valid(m):
-			(m as Node).queue_free()
-	_duel_a = null
-	_duel_b = null
-	_duel_sent = false
-	_duel_point = null
-	_duel_cool = _event_cooldown()
-	_q_kills.erase("event_duel")
-	Q.set_reward_mult("event_duel", 1.0)
-	Q.skip_quest(String(q["id"]))
-
-func _spawn_duel(center: Vector3) -> bool:
-	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp == null or not sp.has_method("spawn_at"):
-		return false
-	var side: Vector3 = Vector3(DUEL_GAP * 0.5, 0.0, 0.0)
-	if sp.has_method("clear_point"):
-		center = sp.clear_point(center, DUEL_GAP * 0.5)   # both outside PLAYER_CLEAR, still facing off
-	# ОБА ПО ПОТОЛКУ ИГРОКА. Дуэль — зрелище, на которое игрок приезжает и в которое лезет, и
-	# зашитые сюда 7 и 8 означали копейщика с куполом в первый час игры, против стартовой кабины.
-	# Фракции остаются РАЗНЫМИ (1 и 2) — иначе они друг друга не увидят вовсе.
-	_duel_a = _spawn_hostile(sp, center - side, 7, 1)
-	_duel_b = _spawn_hostile(sp, center + side, 8, 2)
-	if _duel_a == null or _duel_b == null:
-		return false
-	_duel_sent = true
-	# Цели назначаем сразу и накрепко: пока игрок доедет, они уже должны драться, а не
-	# искать друг друга по своим зонам обнаружения.
-	if _duel_a.has_method("assign_target"):
-		_duel_a.assign_target(_duel_b, true)
-	if _duel_b.has_method("assign_target"):
-		_duel_b.assign_target(_duel_a, true)
-	return true
-
-func _duel_2(q: Dictionary) -> void:
-	if _duel_abandoned(q):
-		return
-	# ПУСТЫЕ ССЫЛКИ САМИ ПО СЕБЕ НЕ ПОБЕДА: у мёртвого узла ссылка ведёт на освобождённый адрес,
-	# а после перезахода её попросту нет — и то и другое `is_instance_valid` отдаёт как false, так
-	# что отличить «добили» от «состояние потеряно» может только флаг. Он в памяти, а память как
-	# раз и теряется: не поднят — дуэль выставляется заново. Иначе квест закрывался выходом в
-	# меню, а это единственное событие, которое игрок вообще может просто посмотреть.
-	if not _duel_sent:
-		if _duel_point == null:
-			_duel_point = _duel_pick_point()
-		if _duel_point != null:
-			_spawn_duel(_duel_point as Vector3)
-		return
-	# Победа = поля боя больше нет. Если они добьют друг друга сами — тоже победа: игрок
-	# приехал и дождался, это его решение, а не поблажка.
-	if is_instance_valid(_duel_a) or is_instance_valid(_duel_b):
-		return
-	_duel_sent = false
-	Q.report(String(q["event"]), 1)
-	_q_kills.erase("event_duel")     # paid out above; the next duel starts at one
-	_duel_cool = _event_cooldown()   # дуэль — такое же событие, пауза общая
-	_duel_point = null
-
-## Перезарядка события: отлежалось — открываем заново. Без этого «событие» случилось бы
-## ровно один раз за всю игру и навсегда осталось выполненным.
-func _duel_cooldown(delta: float) -> void:
-	if _duel_cool <= 0.0:
-		return
-	_duel_cool -= delta
-	if _duel_cool <= 0.0:
-		Q.reset_quest("event_duel")
-
 # ── Помощники ────────────────────────────────────────────────────────────────
 ## "REACH X" IS DONE WHEN THE PLAYER IS THERE, NOT WHEN X EXISTS. Participants appear the moment a
 ## quest opens, 250-300 m out (the one spawn rule), and commit 99e43f9 moved the spawn up by
@@ -2105,7 +1953,6 @@ func quest_point(ev: String) -> Variant:
 		return live
 	match ev:
 		"quest_salvage_1": return _salvage_point
-		"quest_duel_1":    return _duel_point
 		"quest_line_1":    return _line_point
 		# Пока панель (или реген) лежит у базы, компас ведёт к предмету — его отдаёт QuestProps,
 		# и спрашивают его раньше нас. Предмет подобран — цель это САМА БАЗА: ставить его всё
@@ -2138,7 +1985,6 @@ func _live_target(ev: String) -> Variant:
 	match key:
 		"hold":      list.append_array(_hold)
 		"salvage":   list.append(_salvage_guard)
-		"duel":      list.append_array([_duel_a, _duel_b])
 	# Носитель сюжетного блока — такой же живой участник: пока он ездит, метка едет за ним.
 	if _carrier.has(key):
 		list.append(_carrier[key])
@@ -2362,8 +2208,8 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 ## one of the player's machines is within PARTY_ARRIVE of it, as one spawn group (`spawn_group`, which
 ## the spawner's MAX_GROUPS counts once), and are taken away again once every live member is farther
 ## than PARTY_LEAVE from all of the player's machines - measured from THE MACHINES, which drive, not
-## from the point. Coming back brings back whoever was not killed. Hold Position (its attack comes to
-## the player) and allies spawn at once (`defer` false / faction 0).
+## from the point. Coming back brings back whoever was not killed. Allies (faction 0) and a party
+## spawned with `defer` false come at once.
 const PARTY_ARRIVE := 70.0
 const PARTY_LEAVE := 140.0
 
@@ -2630,25 +2476,6 @@ func _defend_2(q: Dictionary) -> void:
 			return
 	_ev_ally.erase(key)
 	_release_machine(ally)
-	_ev_done(q, key)
-
-# ── «Hold Position»: one attack, straight at your position ──────────────────
-func _waves_1(q: Dictionary) -> void:
-	var key := _ev_key(String(q["event"]))
-	var p: Node3D = _player()
-	if p == null:
-		return
-	# Точка — ГДЕ СТОИТ ИГРОК: волна приходит к нему, ехать никуда не надо. Она нужна не для
-	# компаса, а для правила «уехал на 500 м — задание снято».
-	if not _ev_point.has(key):
-		_ev_point[key] = p.global_position
-	if _ev_abandoned(q, key):
-		return
-	if not _ev_mobs.has(key):
-		_ev_spawn(key, p.global_position, [6, 7, 8], 1, p, false)
-		Dialogue.say("System", tr("Contacts inbound on your position."))
-	if not _ev_all_dead(key):
-		return
 	_ev_done(q, key)
 
 # ── «Take the Camp»: лагерь с охраной и трофеем ─────────────────────────────
