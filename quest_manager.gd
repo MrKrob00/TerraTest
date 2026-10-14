@@ -376,6 +376,28 @@ func _seed_demo() -> void:
 	requires("aero_strand", ["aero_plateau"])
 	requires("aero_descent", ["aero_strand"])
 
+	# ── ROCK CREEK BRIDGE: Marlit's story (TerraTech's GeoCorp mission) ─────────────────────────
+	# A toll keeper on the crossing: pay or fight; winning pays in Stryx blocks early (quest_arcs).
+	_faction_story("marlit", "mrock", "Rock Creek Bridge", 36, 700, 120, 24, 2, [
+		{"desc": "Reach the crossing", "event": "quest_rock_1", "goal": 1,
+		 "hint": "Someone has taken the crossing at Rock Creek and charges for it."},
+		{"desc": "Pay the toll or break through", "event": "quest_rock_2", "goal": 1,
+		 "hint": "Pay and drive on, or cross the line and fight. Its hardware is better than ours."}])
+
+	# ── STRYX'S STORY (TerraTech's Hawkeye campaign): Quiet Job (Wet Work, renamed), then
+	# Crowntop Hill Fort and its Spider King (quest_arcs `_quiet_*`, CROWN).
+	_faction_story("stryx", "stryx_quiet", "Quiet Job", 50, 600, 110, 22, 1, [
+		{"desc": "Find the courier", "event": "quest_quiet_1", "goal": 1,
+		 "hint": "A courier waits out there with an escort. It will run the moment it sees you."},
+		{"desc": "Stop the courier before it reaches its drop", "event": "quest_quiet_2", "goal": 1,
+		 "hint": "The escort does not matter. The courier must not arrive."}])
+	_faction_story("stryx", "stryx_crown", "Crowntop Hill Fort", 51, 900, 160, 30, 2, [
+		{"desc": "Reach Crowntop Hill", "event": "quest_crown_1", "goal": 1,
+		 "hint": "The Spider King holds the hill: an anchored fort with rockets, lasers and a dome."},
+		{"desc": "Bring down the Spider King", "event": "quest_crown_2", "goal": 1,
+		 "hint": "Its dome lives on panels and batteries. At night the panels give nothing."}])
+	requires("stryx_crown", ["stryx_quiet"])
+
 	# ── AERO'S EVENTS: races and a chase (TerraTech's Venture board) ───────────────────────────
 	_faction_event("aero", "event_acourse", "Checkpoint Race", 260, 40, 8, 1, "acourse",
 			"Reach the start gate", "Run the course inside the time",

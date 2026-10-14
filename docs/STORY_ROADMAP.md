@@ -119,5 +119,9 @@
 | Venture-гонки | Checkpoint Race, Drag Strip, Slalom (прыжок с трамплина невозможен: колёса читают только рельеф) | `event_acourse`, `event_adrag`, `event_aslalom` |
 | погоня за минуту | «Погоня»: машина убегает, увидев игрока; уничтожить за 60 с | `event_achase` |
 | Capture Enemy Base | настоящий захват поста | `event_camp` |
+| Bird of Prey (лицензия Hawkeye) | лицензия Stryx: капсула, три «Зачистки» падают с неба | `arc_stryx` |
+| Rock Creek Bridge | сюжет Marlit: хозяин переправы, выкуп 2500$ или бой; победа даёт блоки Stryx | `mrock` |
+| Wet Work | «Тихая работа»: курьер с охраной, уничтожить до точки сброса | `stryx_quiet` |
+| Crowntop Hill Fort | Король-паук: форт Stryx на опоре, ночью купол не подпитывается | `stryx_crown` |
 | Defeat Enemy Waves, Crossfire | убраны | — |
 | Better Future, Reticule Research | пропущены, пока фракций нет | — |

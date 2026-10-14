@@ -109,6 +109,12 @@ func _tick_arcs(delta: float) -> void:
 					"quest_aslalom_2":
 				_course_2(q)
 			"quest_achase_1":      _chase_1(q)
+			"quest_rock_1":        _rock_1(q)
+			"quest_rock_2":        _rock_2(q)
+			"quest_quiet_1":       _quiet_1(q)
+			"quest_quiet_2":       _quiet_2(q)
+			"quest_crown_1":       _tower_1(q, CROWN)
+			"quest_crown_2":       _tower_2(q, CROWN)
 			"quest_bop_1":         _bop_1(q)
 			"quest_bop_2":         _bop_2(q)
 			"quest_astrand_1":     _strand_1(q)
@@ -1640,6 +1646,14 @@ const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 0, "award": G.Bloc
 const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.ROCKET,
 		"say": "That dome is not the tower's own. Something else is paying for it."}
 
+## CROWNTOP HILL FORT (TerraTech's Hawkeye story, the player's call: "on a support"): the Spider
+## King, an anchored Stryx fort - rockets, lasers, a dome and a repair field on batteries and panels
+## (blocks.SPIDER_KING) - so at night its panels give nothing and the dome drains for good. No hover
+## rings: nothing here hovers.
+const CROWN := {"key": "crown", "preset": 132, "guards": 0, "award": G.Block.STRYX_SHIELD,
+		"say": "The Spider King holds Crowntop Hill: rockets, lasers and a dome. Its panels feed the dome - at night they give nothing.",
+		"done": "The Spider King is down. Stryx pays in hardware."}
+
 ## THE ALMIGHTY CUBE runs on this branch: a base to reach and bring down, no guards. Each cube is
 ## its own key, so all three can stand at once; `_tower_pick` keeps their points TOWER_APART.
 const CUBES := [
@@ -2002,6 +2016,10 @@ func _live_target(ev: String) -> Variant:
 	list.append_array(_ev_mobs.get(key, []))
 	if _ev_base.has(key):
 		list.append(_ev_base[key])
+	if key == "rock":
+		list.append(_rock)
+	elif key == "quiet":
+		list.append(_quiet)
 	if _tower_node.has(key):
 		list.append(_tower_node[key])
 	match key:
@@ -3049,3 +3067,198 @@ func _bop_2(q: Dictionary) -> void:
 	_bop_crew.clear()
 	Dialogue.say("System", tr("The cleaners are gone. Whatever they were hiding, Stryx will deal with you now - as a contractor."))
 	Q.report(String(q["event"]), 1)
+
+# ── ROCK CREEK BRIDGE (Marlit's story; TerraTech's GeoCorp mission) ─────────────────────────
+## A toll keeper sits on the crossing in a heavy Stryx build (`enemy_vehicle.standoff`: it waits and
+## looks for nobody). Within ROCK_TALK the player is asked: pay ROCK_TOLL (the player's call: the
+## original's 100 000 does not fit this economy, where quests pay 200-1200) and it drives off, or
+## fight. Crossing ROCK_LINE, shooting it, or refusing starts the fight, and beating it pays in Stryx
+## blocks early - before the Stryx licence, as the original handed Hawkeye blocks to whoever won.
+const ROCK_TOLL := 2500
+const ROCK_TALK := 150.0
+const ROCK_LINE := 60.0
+const ROCK_PRESET := 131                 # blocks.STRYX_HEAVY
+const ROCK_LOOT := [G.Block.STRYX_GUN, G.Block.STRYX_CANNON, G.Block.STRYX_ARMOR2]
+var _rock: Node3D = null
+var _rock_asked: bool = false
+var _rock_paid: bool = false
+var _rock_dialog: ConfirmationDialog = null
+
+func _rock_spawn(at: Vector3) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "mrock"
+	_rock = _spawn_hostile(sp, at, ROCK_PRESET, 1)
+	_cur_q = was_q
+	if _rock == null:
+		return
+	_rock.set("standoff", true)
+	_rock.set_meta("display_name", "Toll Keeper")
+	_rock_asked = false
+	_rock_paid = false
+
+func _rock_1(q: Dictionary) -> void:
+	var at = _ev_get_point("rock")
+	if at == null:
+		return
+	if not is_instance_valid(_rock):
+		_rock_spawn(at as Vector3)
+		Dialogue.say("Marlit", tr("Someone has taken the crossing at Rock Creek and charges for it. Marlit's convoys will not pay. Will you?"))
+	var p: Node3D = _player()
+	if p == null or not is_instance_valid(_rock):
+		return
+	if p.global_position.distance_squared_to(_rock.global_position) > ROCK_TALK * ROCK_TALK:
+		return
+	Q.report(String(q["event"]), 1)
+
+func _rock_2(q: Dictionary) -> void:
+	if not is_instance_valid(_rock):
+		if _rock_paid or _rock_dead:
+			_rock_finish(q)
+		else:
+			Q.reset_quest(String(q["id"]))      # state lost (a reload): the keeper sits there again
+		return
+	if _rock_paid:
+		return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if not _rock_asked:
+		_rock_asked = true
+		_rock_ask()
+	var standing: bool = _rock.get("standoff") == true
+	if standing and p.global_position.distance_squared_to(_rock.global_position) < ROCK_LINE * ROCK_LINE:
+		Dialogue.say("Toll Keeper", tr("Over the line without paying. Your mistake."))
+		_rock_fight()
+
+func _rock_ask() -> void:
+	Dialogue.say("Toll Keeper", tr("This crossing is mine. %d$ and you drive on. Cross the line without paying and you do not.") % ROCK_TOLL)
+	if _rock_dialog == null or not is_instance_valid(_rock_dialog):
+		_rock_dialog = ConfirmationDialog.new()
+		_rock_dialog.title = tr("Rock Creek Bridge")
+		_rock_dialog.cancel_button_text = tr("Fight")
+		_rock_dialog.confirmed.connect(_rock_pay)
+		_rock_dialog.canceled.connect(_rock_fight)
+		add_child(_rock_dialog)
+	_rock_dialog.ok_button_text = tr("Pay %d$") % ROCK_TOLL
+	_rock_dialog.dialog_text = tr("The toll keeper wants %d$ for the crossing.") % ROCK_TOLL
+	_rock_dialog.get_ok_button().disabled = G.money < ROCK_TOLL
+	_rock_dialog.popup_centered(Vector2i(420, 150))
+
+func _rock_pay() -> void:
+	if not is_instance_valid(_rock) or G.money < ROCK_TOLL:
+		return
+	G.money -= ROCK_TOLL
+	G.mark_progress_dirty()
+	_rock_paid = true
+	Dialogue.say("Toll Keeper", tr("Pleasure doing business."))
+	_rock.set("standoff", false)
+	_rock.set("runaway_from", _player())
+	get_tree().create_timer(8.0).timeout.connect(_rock_leave)
+
+func _rock_leave() -> void:
+	if is_instance_valid(_rock):
+		_rock.queue_free()
+
+var _rock_dead: bool = false
+
+func _rock_fight() -> void:
+	if not is_instance_valid(_rock) or _rock_paid or _rock.get("standoff") != true:
+		return
+	_rock.set("standoff", false)
+	if _rock.has_method("assign_target"):
+		_rock.assign_target(_player(), true)
+	if _rock.has_signal("died") and not _rock.died.is_connected(_on_rock_died):
+		_rock.died.connect(_on_rock_died, CONNECT_ONE_SHOT)
+
+func _on_rock_died(_x = null) -> void:
+	_rock_dead = true
+
+func _rock_finish(q: Dictionary) -> void:
+	if _rock_dead:
+		for bt in ROCK_LOOT:
+			_award(int(bt))
+		Dialogue.say("Marlit", tr("The crossing is open. Its keeper drove Stryx hardware - it is yours now."))
+	else:
+		Dialogue.say("Marlit", tr("Paid, and the crossing is open. Marlit would have fought."))
+	_rock = null
+	_rock_dead = false
+	_rock_paid = false
+	_ev_point.erase("rock")
+	Q.report(String(q["event"]), 1)
+
+# ── QUIET JOB (TerraTech's Hawkeye "Wet Work", renamed): stop the courier ────────────────────
+## A courier with two escorts waits at a point; once the player is within QUIET_NOTICE it drives for
+## its drop QUIET_RUN on (`enemy_vehicle.travel_to`), the escorts turn on the player. Destroy the
+## courier before it gets there; it arrives, the job is lost and starts over.
+const QUIET_NOTICE := 150.0
+const QUIET_RUN := 350.0
+const QUIET_COURIER := 7
+const QUIET_ESCORTS := [6, 6]
+var _quiet: Node3D = null
+var _quiet_drop: Variant = null
+var _quiet_dead: bool = false
+
+func _quiet_spawn(at: Vector3) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "stryx_quiet"
+	_quiet = _spawn_hostile(sp, at, QUIET_COURIER, 1)
+	if _quiet != null:
+		_quiet.set("standoff", true)
+		_quiet.set_meta("display_name", "Courier")
+		if _quiet.has_signal("died"):
+			_quiet.died.connect(func(_x = null): _quiet_dead = true, CONNECT_ONE_SHOT)
+		var p: Node3D = _player()
+		for i in QUIET_ESCORTS.size():
+			var e: Node3D = _spawn_hostile(sp, at + Vector3(10.0 * (i * 2 - 1), 0.0, 8.0), int(QUIET_ESCORTS[i]), 1)
+			if e != null and p != null and e.has_method("assign_target"):
+				e.assign_target(p, true)
+	_cur_q = was_q
+	_quiet_dead = false
+
+func _quiet_1(q: Dictionary) -> void:
+	var at = _ev_get_point("quiet")
+	if at == null:
+		return
+	if not is_instance_valid(_quiet):
+		_quiet_spawn(at as Vector3)
+		Dialogue.say("Stryx", tr("A courier is carrying something we want buried. It waits out there with an escort. When it moves, it must not arrive."))
+	var p: Node3D = _player()
+	if p == null or not is_instance_valid(_quiet):
+		return
+	if p.global_position.distance_squared_to(_quiet.global_position) > QUIET_NOTICE * QUIET_NOTICE:
+		return
+	var away: Vector3 = _quiet.global_position - p.global_position
+	away.y = 0.0
+	var drop: Vector3 = _quiet.global_position + away.normalized() * QUIET_RUN
+	drop.y = G.ground_y(drop, _quiet.global_position.y)
+	_quiet_drop = drop
+	_quiet.set("standoff", false)
+	_quiet.set("travel_to", drop)
+	Dialogue.say("Stryx", tr("It saw you. It is running for its drop."))
+	Q.report(String(q["event"]), 1)
+
+func _quiet_2(q: Dictionary) -> void:
+	if _quiet_dead:
+		_quiet_dead = false
+		_quiet = null
+		_quiet_drop = null
+		_ev_point.erase("quiet")
+		Dialogue.say("Stryx", tr("Done, and quietly. Stryx remembers who is useful."))
+		Q.report(String(q["event"]), 1)
+		return
+	if not is_instance_valid(_quiet):
+		Q.reset_quest(String(q["id"]))          # state lost (a reload): the courier waits again
+		return
+	if _quiet.has_method("arrived") and _quiet.arrived():
+		Dialogue.say("Stryx", tr("It made its drop. There will be another courier - be faster."))
+		_quiet.queue_free()
+		_quiet = null
+		_quiet_drop = null
+		_ev_point.erase("quiet")
+		Q.reset_quest(String(q["id"]))

@@ -2599,7 +2599,7 @@ enum Block {
 const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block.ROT_SUPPORT,
 		Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
 func is_stationary(bt: int) -> bool:
-	return STATIONARY_BLOCKS.has(int(bt))
+	return STATIONARY_BLOCKS.has(base_block(bt))       # a stub support anchors as its base does
 
 ## THE ORDER OF THESE LISTS IS THE ORDER THE PLAYER SEES (`block_order`: the garage's shop and
 ## inventory, the build globe's rings), and so is the order of the keys - the shop's filter column

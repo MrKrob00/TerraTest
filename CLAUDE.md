@@ -1867,6 +1867,22 @@ project: read it before claiming how anything works.
   `EnemyMarker.name_of` for the label and the death screen; spawned with `arrival`, so no 200 m
   clearance) - two `STRYX_TROOPER` and a `STRYX_HEAVY`. All three dead, the licence. Measured on the
   proving ground: three landed (11, 11, 24 blocks), killed - done.
+- **ROCK CREEK BRIDGE, QUIET JOB AND CROWNTOP HILL FORT** (the player's TerraTech list, renamed where
+  asked). ROCK CREEK BRIDGE (`mrock`, Marlit's story, grade 2; `quest_arcs._rock_*`): a toll keeper in
+  a heavy Stryx build waits on the crossing (`enemy_vehicle.standoff`: no search, no fire until shot
+  at). Within `ROCK_TALK` a question - pay `ROCK_TOLL` (2500$, the player's economy: the original's
+  100 000 against quests of 200-1200) and it drives off, or fight; crossing `ROCK_LINE` unpaid starts
+  the fight too, and beating it pays in Stryx blocks early (`ROCK_LOOT`). QUIET JOB (`stryx_quiet`,
+  TerraTech's "Wet Work"): a courier with two escorts waits; within `QUIET_NOTICE` it runs for a drop
+  `QUIET_RUN` on (`enemy_vehicle.travel_to`); dead before it arrives - done, arrived - the job starts
+  over. CROWNTOP HILL FORT (`stryx_crown`): the Spider King, an anchored Stryx fort ON A SUPPORT (the
+  player's call; `blocks.SPIDER_KING`) - rockets, lasers, a dome and a repair field fed by panels and
+  batteries, so at night the dome only drains - run on the shielded towers' branch (`CROWN`). No hover
+  rings. A STUB SUPPORT ANCHORS AS ITS BASE (`G.is_stationary` asks `base_block`): without it the fort
+  had no core and the watchdog took it the moment it stood. Measured on the proving ground: the keeper
+  waited, the question came at 120 m, crossing the line set it on the player, killed - done; paid -
+  money 5000 -> 2500, it drove off, done; the courier ran 75 m in six seconds, killed - done; the fort
+  21 blocks, brought down - done.
 - **TAKE THE STAGING POINT IS A REAL CAPTURE** (`quest_arcs._camp_1..3`, TerraTech's Capture Enemy
   Base, the player's call): a hostile turret post (`CAMP_POSTS`, presets 13/14 - a rotating support,
   battery, panels, dome, two guns) stands on the point with a guard party. Reach it; break the guard
