@@ -617,6 +617,16 @@ func _can_see_target() -> bool:
 ## THE MACHINE THIS ONE RUNS FROM (the Pursuit event). Untyped, rule 4: it may be freed.
 var runaway_from = null
 const RUN_NOTICE := 90.0
+## A QUEST'S ORDERS, before any fight: `travel_to` (a Vector3) drives there and nowhere else -
+## the courier of Quiet Job; `standoff` waits where it stands and looks for nobody until it is shot
+## at or the quest lets it go - the toll keeper at Rock Creek Bridge.
+var travel_to = null
+var standoff: bool = false
+const TRAVEL_ARRIVE := 12.0
+
+func arrived() -> bool:
+	return travel_to is Vector3 and global_position.distance_squared_to(travel_to as Vector3) \
+			< TRAVEL_ARRIVE * TRAVEL_ARRIVE
 
 func _update_ai(delta: float) -> void:
 	# A QUIET ZONE COMES FIRST, the miner's work included: inside one, it drives out.
@@ -638,6 +648,16 @@ func _update_ai(delta: float) -> void:
 			_drive_to(away, 1.0, delta)
 		else:
 			_drive(_get_forward(), 0.0, delta)
+		return
+	if travel_to is Vector3:
+		_answer_t = 0.0
+		if arrived():
+			_drive(_get_forward(), 0.0, delta)
+		else:
+			_drive_to(travel_to as Vector3, 0.9, delta)
+		return
+	if standoff:
+		_drive(_get_forward(), 0.0, delta)
 		return
 	# The target is re-searched periodically while there is none.
 	_reacquire_t -= delta
@@ -1157,6 +1177,7 @@ func notice_attacker(attacker: Node3D) -> void:
 		return                          # same faction: friendly fire does not change the target
 	if _sheltered(attacker):
 		return                          # shot from a quiet zone: it does not answer into it
+	standoff = false                    # shot at, the toll keeper fights
 	if relentless and is_instance_valid(_target):
 		return                          # a relentless enemy was given its target once and for all
 	# Being shot at cancels the give-up. You can walk away from someone who let you go; being finished

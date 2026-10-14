@@ -3555,5 +3555,133 @@
 	"The cleaners are gone. Whatever they were hiding, Stryx will deal with you now - as a contractor.": {
 		"ru": "Чистильщиков больше нет. Что бы они ни прятали — теперь Stryx будет иметь дело с вами. Как с подрядчиком.",
 		"uk": "Чистильників більше немає. Що б вони не ховали — тепер Stryx матиме справу з вами. Як із підрядником."
+	},
+	"Rock Creek Bridge": {
+		"ru": "Мост у Рок-Крик",
+		"uk": "Міст біля Рок-Крік"
+	},
+	"Reach the crossing": {
+		"ru": "Доберитесь до переправы",
+		"uk": "Дістаньтеся переправи"
+	},
+	"Someone has taken the crossing at Rock Creek and charges for it.": {
+		"ru": "Кто-то занял переправу у Рок-Крик и берёт за проезд.",
+		"uk": "Хтось зайняв переправу біля Рок-Крік і бере за проїзд."
+	},
+	"Pay the toll or break through": {
+		"ru": "Заплатите или прорвитесь",
+		"uk": "Заплатіть або прорвіться"
+	},
+	"Pay and drive on, or cross the line and fight. Its hardware is better than ours.": {
+		"ru": "Заплатите и езжайте дальше — или пересеките черту и деритесь. Железо у него лучше нашего.",
+		"uk": "Заплатіть і їдьте далі — або перетніть межу й бийтеся. Залізо в нього краще за наше."
+	},
+	"Someone has taken the crossing at Rock Creek and charges for it. Marlit's convoys will not pay. Will you?": {
+		"ru": "Кто-то занял переправу у Рок-Крик и берёт за проезд. Конвои Marlit платить не станут. А вы?",
+		"uk": "Хтось зайняв переправу біля Рок-Крік і бере за проїзд. Конвої Marlit платити не стануть. А ви?"
+	},
+	"Over the line without paying. Your mistake.": {
+		"ru": "За черту без оплаты. Твоя ошибка.",
+		"uk": "За межу без оплати. Твоя помилка."
+	},
+	"This crossing is mine. %d$ and you drive on. Cross the line without paying and you do not.": {
+		"ru": "Эта переправа моя. %d$ — и проезжай. Пересечёшь черту не заплатив — не проедешь.",
+		"uk": "Ця переправа моя. %d$ — і проїжджай. Перетнеш межу не заплативши — не проїдеш."
+	},
+	"Fight": {
+		"ru": "Драться",
+		"uk": "Битися"
+	},
+	"Pay %d$": {
+		"ru": "Заплатить %d$",
+		"uk": "Заплатити %d$"
+	},
+	"The toll keeper wants %d$ for the crossing.": {
+		"ru": "Хозяин переправы требует %d$ за проезд.",
+		"uk": "Хазяїн переправи вимагає %d$ за проїзд."
+	},
+	"Pleasure doing business.": {
+		"ru": "Приятно иметь дело.",
+		"uk": "Приємно мати справу."
+	},
+	"The crossing is open. Its keeper drove Stryx hardware - it is yours now.": {
+		"ru": "Переправа свободна. Её хозяин ездил на железе Stryx — теперь оно ваше.",
+		"uk": "Переправа вільна. Її хазяїн їздив на залізі Stryx — тепер воно ваше."
+	},
+	"Paid, and the crossing is open. Marlit would have fought.": {
+		"ru": "Заплачено, переправа свободна. Marlit бы дрался.",
+		"uk": "Заплачено, переправа вільна. Marlit бився б."
+	},
+	"Toll Keeper": {
+		"ru": "Хозяин переправы",
+		"uk": "Хазяїн переправи"
+	},
+	"Courier": {
+		"ru": "Курьер",
+		"uk": "Кур'єр"
+	},
+	"Quiet Job": {
+		"ru": "Тихая работа",
+		"uk": "Тиха робота"
+	},
+	"Find the courier": {
+		"ru": "Найдите курьера",
+		"uk": "Знайдіть кур'єра"
+	},
+	"A courier waits out there with an escort. It will run the moment it sees you.": {
+		"ru": "Там ждёт курьер с охраной. Увидев вас, он сразу сорвётся с места.",
+		"uk": "Там чекає кур'єр з охороною. Побачивши вас, він одразу зірветься з місця."
+	},
+	"Stop the courier before it reaches its drop": {
+		"ru": "Остановите курьера, пока он не доехал",
+		"uk": "Зупиніть кур'єра, поки він не доїхав"
+	},
+	"The escort does not matter. The courier must not arrive.": {
+		"ru": "Охрана неважна. Курьер не должен доехать.",
+		"uk": "Охорона неважлива. Кур'єр не має доїхати."
+	},
+	"A courier is carrying something we want buried. It waits out there with an escort. When it moves, it must not arrive.": {
+		"ru": "Курьер везёт то, что мы хотим похоронить. Он ждёт там с охраной. Когда тронется — не должен доехать.",
+		"uk": "Кур'єр везе те, що ми хочемо поховати. Він чекає там з охороною. Коли рушить — не має доїхати."
+	},
+	"It saw you. It is running for its drop.": {
+		"ru": "Он вас заметил. Мчит к точке сброса.",
+		"uk": "Він вас помітив. Мчить до точки скидання."
+	},
+	"Done, and quietly. Stryx remembers who is useful.": {
+		"ru": "Сделано, и тихо. Stryx помнит, кто полезен.",
+		"uk": "Зроблено, і тихо. Stryx пам'ятає, хто корисний."
+	},
+	"It made its drop. There will be another courier - be faster.": {
+		"ru": "Он доехал. Будет другой курьер — будьте быстрее.",
+		"uk": "Він доїхав. Буде інший кур'єр — будьте швидші."
+	},
+	"Crowntop Hill Fort": {
+		"ru": "Форт на Коронном холме",
+		"uk": "Форт на Коронному пагорбі"
+	},
+	"Reach Crowntop Hill": {
+		"ru": "Доберитесь до Коронного холма",
+		"uk": "Дістаньтеся Коронного пагорба"
+	},
+	"The Spider King holds the hill: an anchored fort with rockets, lasers and a dome.": {
+		"ru": "Холм держит Король-паук: форт на опоре с ракетами, лазерами и куполом.",
+		"uk": "Пагорб тримає Король-павук: форт на опорі з ракетами, лазерами й куполом."
+	},
+	"Bring down the Spider King": {
+		"ru": "Уничтожьте Короля-паука",
+		"uk": "Знищте Короля-павука"
+	},
+	"Its dome lives on panels and batteries. At night the panels give nothing.": {
+		"ru": "Его купол живёт на панелях и аккумуляторах. Ночью панели не дают ничего.",
+		"uk": "Його купол живе на панелях і акумуляторах. Уночі панелі не дають нічого."
+	},
+	"The Spider King holds Crowntop Hill: rockets, lasers and a dome. Its panels feed the dome - at night they give nothing.": {
+		"ru": "Король-паук держит Коронный холм: ракеты, лазеры и купол. Купол питают панели — ночью они не дают ничего.",
+		"uk": "Король-павук тримає Коронний пагорб: ракети, лазери й купол. Купол живлять панелі — уночі вони не дають нічого."
+	},
+	"The Spider King is down. Stryx pays in hardware.": {
+		"ru": "Король-паук повержен. Stryx платит железом.",
+		"uk": "Короля-павука повалено. Stryx платить залізом."
 	}
 }
