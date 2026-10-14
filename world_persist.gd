@@ -742,6 +742,8 @@ func _save_world() -> void:
 			# and are always the same; writing derivable data into a save eventually gives a save that argues
 			# with the code.
 			"outposts": _outposts_state(),
+			# ORE VEINS NOT FULL (600 ore, 30 minutes): what is left and the seconds still to rest.
+			"veins": _veins_state(),
 		}))
 		f.close()
 
@@ -750,6 +752,10 @@ func _save_world() -> void:
 func _outposts_state() -> Array:
 	var o: Node = get_tree().get_first_node_in_group("outposts")
 	return o.save_state() if (o != null and o.has_method("save_state")) else []
+
+func _veins_state() -> Dictionary:
+	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
+	return rn.ore_state_save() if (rn != null and rn.has_method("ore_state_save")) else {}
 
 func _load_world() -> void:
 	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.READ)
@@ -787,6 +793,9 @@ func _load_world() -> void:
 	var op: Node = get_tree().get_first_node_in_group("outposts")
 	if op != null and op.has_method("load_state"):
 		op.load_state(data.get("outposts", []))
+	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
+	if rn != null and rn.has_method("ore_state_load") and data.get("veins") is Dictionary:
+		rn.ore_state_load(data["veins"])
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])

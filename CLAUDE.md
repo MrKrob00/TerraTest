@@ -597,8 +597,7 @@ project: read it before claiming how anything works.
   inside a base.
 - **AN EMPTY VEIN IS NOT IN THE WAY** (`resource_node._set_solid`): the collider goes with the last
   ore (a felled tree's with its last wood) and comes back with the refill; a 3 m cylinder over rubble
-  and a 7 m trunk over a stump stopped machines and shots on air. A vein the auto miner holds stays
-  open the whole time. A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows,
+  and a 7 m trunk over a stump stopped machines and shots on air. A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows,
   `_spot_blocked`: the vein's own shape against MACHINES ONLY, layer 16), asking again every
   `BLOCKED_RETRY` - a collider switched on inside a machine throws it out with the solver's full
   force. Loose items and blocks are not asked: the vein's own thrown ore lies inside that shape, and
@@ -662,6 +661,17 @@ project: read it before claiming how anything works.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
+- **AN ORE VEIN HOLDS 600 ORE AND RESTS 30 MINUTES ONCE SPENT** (`resource_node.ORE_TOTAL` /
+  `ORE_REST`, the player's balance; a tree still gives five wood and moves). It held five and rested
+  five seconds - a tap that never ran dry. An ore still leaves per a fifth of `max_hp` of damage, so
+  a drill digs at the same rate; the picture breaks by what is LEFT of the 600. WHAT IS LEFT OUTLIVES
+  THE NODE (`resource_nodes._ore_state`, keyed by the vein's ground point, only veins not full): the
+  node goes when the camera leaves and a region's records are rebuilt full from the seed, so the
+  state lives on the owner, the vein streams in with it (`restore_left` / `restore_wait`) and the
+  world save writes it with the seconds still to rest (`world_persist` "veins"). THE AUTO MINER DIGS
+  THE SAME 600 (`mine_for_claimer` takes from the store, one miner a vein): it used to work only a
+  vein the drill had spent and scrape it for ever, which would have left the miner the one thing the
+  balance did not reach. It goes beside any ore vein.
 - THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
   energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
   whatever there is even when it is short, so the old "take and see" on one panel (6/s against the
@@ -683,7 +693,7 @@ project: read it before claiming how anything works.
   rock with a brush of thin crystals on top). AN ORE VEIN BREAKS, IT DOES NOT SHRINK (the
   player's call - shrinking read as a model getting smaller, and the ore going while its rock
   stayed was wrong first): every model is cut into parts, UV.x carries each part's break point
-  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, lined up with the five ores `resource_node` throws out),
+  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, by the share of the vein's 600 ore still in it),
   and the shader collapses a part once the share (thrown ore, below) is at or under it - one mesh, one MultiMesh, no
   model swapped. What stays at zero is RUBBLE (UV.x below 0): the rock's low base, the crystals'
   broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
