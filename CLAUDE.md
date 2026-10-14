@@ -1188,7 +1188,25 @@ project: read it before claiming how anything works.
   by LiteTerrain too, to skip its collision window).
 - The first enemy of a save deals halved damage (`FIRST_ENEMY_DAMAGE`); the story scout gets that
   discount unconditionally and drops along the player's heading — the one deliberate inversion of
-  "never spawn in front" — but 115-135 m out, not 20-40: the clearance below holds for it too.
+  "never spawn in front" — 40-55 m out, INSIDE the clearance below (the player's call: "once the
+  player has moved, the scout spawns right by them, the ring first"; below, the Tutorial entry).
+- **EVERY DROPPING MACHINE IS ANNOUNCED BY A RING ON THE GROUND, `DROP_WARN` (3 s) AHEAD**
+  (`enemy_spawner._hold_for_drop` / `_release_drop`, `drop_ring.gd`, `resources/drop_ring.gdshader`;
+  the player's call). ONE DOOR for the stream, the scout, `spawn_at` (quests, raids, events, the panel)
+  and the sector-scan invader; bases stand and are not held. The machine is MADE AT ONCE - callers keep
+  their node, a quest counts it - but HELD over its point: frozen, hidden, process off, out of
+  `MachineBody.MACHINES` (no gun, AI or sun shadow sees it), collision layer 0, metas `drop_pending`
+  and `drop_at` (the ground point; `quest_compass` leads there while it is held). Then it is let go,
+  falls `drop_height` and materialises (`enemy_vehicle._materialise_on_spawn` skips while held; the
+  spawner calls it on release). The ring: two ribbons draped on the ground at the build's reach
+  (`_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside `add_child`),
+  dashes running round and a countdown arc filling the outer one, the last second blinking, cyan for
+  an ally; it fades as the machine drops. THE VEHICLE CULL PASS SHOWED HIDDEN MACHINES AGAIN
+  (`world_persist._vehicle_render_tick` writes `visible` from the frustum): a held one hung in the air
+  over its ring, and every SLEEPER in the frustum had been drawn all along - it now leaves both hidden.
+  A held machine the dormancy pass puts to sleep stays asleep on release (`_wake` waits for the hold).
+  Measured on the proving ground: held 3 s (hidden, out of the group, layer 0), released, landed,
+  materialised, ring freed; Bird of Prey's crew drops as its capsules land (`BOP_FALL` = `DROP_WARN`).
 - **NO HOSTILE MACHINE IS BORN WITHIN 200 M OF THE PLAYER'S OWN** (`EnemySpawner.PLAYER_CLEAR`, the
   player's rule; it was 100, and a fresh world showed the duel, the stream and a miner at 127-213 m -
   "wherever I look at the start, enemies"; after, every hostile 247 m or more out, the stream's ring
@@ -1197,9 +1215,10 @@ project: read it before claiming how anything works.
   controller's `vehicles`. A point too close is MOVED OUT, not refused (`clear_point`: out along the
   line it lay on, then fanning to the sides), so an event that asked for an attack still gets one,
   from far enough to be seen coming. The door is `spawn_at` (every quest, raid and event), plus the
-  three that place their own: the stream ring (inner edge `PLAYER_CLEAR + CLEAR_PAD`, checked
+  two that place their own: the stream ring (inner edge `PLAYER_CLEAR + CLEAR_PAD`, checked
   against every own machine, not only the driven one), the sector-scan invader (it dropped 25 m
-  away) and the story scout. A party is moved AS A WHOLE before its members are placed
+  away); the story scout is the one exception (it lands by the player, its drop ring announcing it).
+  A party is moved AS A WHOLE before its members are placed
   (`_ev_spawn`, the duel), or each would be pushed its own way. Left alone: bases (`as_base`, they
   are the quest point), allies (faction 0), and the proving-ground panel's own spawn
   (`spawn_requested(..., free_place)`), whose point is the test. Measured: asked at 0 / 20 m - born
@@ -1882,7 +1901,7 @@ project: read it before claiming how anything works.
   TerraTech's Hawkeye licence, a STORY quest so it is guaranteed - the original drew it from a board):
   a crashed capsule and burnt blocks at a point (a picture, nothing to pick up); within `BOP_NOTICE`
   the Mechanic hears something and three capsules are SEEN falling from `BOP_HIGH` onto a ring round
-  the site, each setting down a "Cleanup Crew" machine (meta `display_name`, read by
+  the site (their crew asked for at once and held over its drop ring for exactly the fall), each setting down a "Cleanup Crew" machine (meta `display_name`, read by
   `EnemyMarker.name_of` for the label and the death screen; spawned with `arrival`, so no 200 m
   clearance) - two `STRYX_TROOPER` and a `STRYX_HEAVY`. All three dead, the licence. Measured on the
   proving ground: three landed (11, 11, 24 blocks), killed - done.
@@ -2014,8 +2033,22 @@ project: read it before claiming how anything works.
   SCOUT IS THE FIRST STORY QUEST (`story_first_blood`). Non-obvious gestures are a Mechanic line at
   the end. THE SCOUT HAS ITS OWN BUILD (`blocks.STORY_SCOUT`, 126: a cabin, one block, four small
   wheels, one machine gun - the player's call; a roll of the bottom step brought a shotgun and a gun
-  to a machine five minutes old) and COMES FOR THE PLAYER (`assign_target`): born `PLAYER_CLEAR` out
-  it would see nothing and fall asleep. Measured: 232 m at birth, 45 m fifteen seconds later, awake.
+  to a machine five minutes old) and COMES FOR THE PLAYER (`assign_target`). IT COMES WHEN THE PLAYER
+  DRIVES, RIGHT BY THEM (`tutorial_director._first_enemy_after_delay`, the player's call): after
+  `SCOUT_PAUSE`, once the machine has gone `SCOUT_MOVE` (12 m), it is asked `SCOUT_NEAR` (40-55 m)
+  ahead (`spawn_scout_near_player(..., near)`, no 200 m clearance) and its drop ring stands there 3 s
+  first; the quest is released with the ring, so the marker leads to the ring's middle. The STREAM
+  waits for it (`enemy_spawner._tutorial_active` asks `Q.is_held("story_first_blood")`), or a stream
+  machine would arrive first. Measured on a fresh world: nothing while the machine stood, the ring
+  51 m ahead a second after it drove 15 m, the compass on the ring's middle, the scout on the ground
+  3 s later. WHERE THE PLAYER FIRST WAKES IS A SMOULDERING SPOT (`crash_site.gd`, raised once by
+  `world_persist._fresh_start`; the player's call and picture): the Falsus block's model blackened and
+  tumbled round the start, and the ground's OWN shader drawing charred plates with glowing cracks in a
+  13 m circle (`glsl.gdshader` `ember_spot` through `ChunkTerrain.set_ember_spot`: a Voronoi field's
+  borders in world metres, computed per pixel inside a uniform branch, no grass on it), cooling over
+  five minutes to under half. A patch drawn over the ground was tried first: to clear the grass it had
+  to be pulled toward the camera and it darkened every block standing on it; per vertex the mask
+  stepped at the LOD seams. Not saved - a reload comes back without it.
 
 ### The proving ground
 

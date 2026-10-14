@@ -1306,7 +1306,8 @@ const FLIP_HARD := -0.2
 ## из сейва. Сорок оболочек на каждую вышку при входе в мир — это хич на загрузке ради эффекта,
 ## которого никто не увидит, потому что смотреть в этот момент ещё некому.
 func _materialise_on_spawn() -> void:
-	if is_base or not is_inside_tree():
+	# held for its drop ring (enemy_spawner._hold_for_drop): the spawner calls this again on release
+	if is_base or not is_inside_tree() or has_meta("drop_pending"):
 		return
 	BlockFX.materialise(self)
 ## And a pause after righting: the two hulls are still overlapping when it ends, so without this
