@@ -2050,10 +2050,14 @@ project: read it before claiming how anything works.
   five minutes to under half. A patch drawn over the ground was tried first: to clear the grass it had
   to be pulled toward the camera and it darkened every block standing on it; per vertex the mask
   stepped at the LOD seams. Not saved - a reload comes back without it.
-  FOR THE PLAYER'S TEST THE EMBERS AND THE CORRUPTION OVERLAY ARE OUT OF THE GROUND SHADER: the
-  ember code in it cost ~7% of the frame on llvmpipe for a 6.5 m spot (measured, three rounds), on a
-  phone more. `set_ember_spot` and `set_corruption_map` still set uniforms that no longer exist
-  (dropped without a word); the burnt cubes stay. The embers come back as a patch of their own.
+  **THE EMBERS AND THE CORRUPTION OVERLAY ARE OUT OF THE GROUND SHADER, AND THAT WAS THE PHONE'S
+  FRAME**: with them in, the player measured 18 fps with our shadows (12 with background apps), the
+  ~30 of the cascades gone; with both taken out, 34. Code in the ground's fragment costs on the phone
+  even where its branch is not taken - the ground is most of the screen and the shader the fill (see
+  Look and light) - and llvmpipe cannot rank it (its A/B rounds swung both ways). So NOTHING GOES INTO
+  `glsl.gdshader` FOR A SPOT: a local effect is a mesh of its own over the ground. `set_ember_spot` and
+  `set_corruption_map` still set uniforms that no longer exist (dropped without a word); the burnt
+  cubes stay.
 
 ### The proving ground
 
