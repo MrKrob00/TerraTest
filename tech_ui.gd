@@ -1663,6 +1663,11 @@ func _on_full_shadows(on: bool) -> void:
 	if mn and mn.has_method("set_shadows_engine"):
 		mn.set_shadows_engine(on)
 
+func _on_ground_opt(on: bool, bit: int) -> void:
+	var mn: Node = get_node_or_null("/root/Main")
+	if mn and mn.has_method("set_ground_opt"):
+		mn.set_ground_opt(bit, on)
+
 func _on_hlod(on: bool) -> void:
 	var mn: Node = get_node_or_null("/root/Main")
 	if mn and mn.has_method("set_hlod"):
@@ -1781,6 +1786,21 @@ func _build_settings_tab() -> void:
 			hl_hint.add_theme_font_size_override("font_size", 12)
 			hl_hint.modulate = Color(1, 1, 1, 0.55)
 			_extra_vb.add_child(hl_hint)
+		# THE GROUND'S PIXEL COST, three test switches for the phone's probe (ChunkTerrain.ground_opts)
+		if "ground_opts" in main:
+			for opt in [[1, "Ground: no colour noise"], [2, "Ground: detail only near (80 m)"],
+					[4, "Ground: one detail plane (canyon walls streak)"]]:
+				var gb := CheckButton.new()
+				gb.text = tr(opt[1])
+				gb.button_pressed = (int(main.ground_opts) & int(opt[0])) != 0
+				gb.add_theme_font_size_override("font_size", 14)
+				gb.toggled.connect(_on_ground_opt.bind(int(opt[0])))
+				_extra_vb.add_child(gb)
+			var go_hint := Label.new()
+			go_hint.text = tr("Cheaper ground for FPS tests. All off is the ground as drawn.")
+			go_hint.add_theme_font_size_override("font_size", 12)
+			go_hint.modulate = Color(1, 1, 1, 0.55)
+			_extra_vb.add_child(go_hint)
 
 	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
 	if OS.has_feature("pc") and "fullscreen" in main:

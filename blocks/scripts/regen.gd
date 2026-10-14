@@ -17,11 +17,9 @@ const REGEN_RATE := 135.0      # HP a second, split between the damaged blocks i
 const REGEN_HP_PER_ENERGY := 1.5
 const REGEN_INTERVAL := 1.0    # с между тиками
 
-## THE FIELD IS UP ONLY WHILE THERE IS WORK IN IT (the player's call: "if there is nothing for the
-## repair unit to do in its radius, the sphere goes"): something in reach missing hit points at the
-## last tick (`_busy`), or digits still in flight. It eases in and out over FIELD_FADE, never blinks -
-## the tick decides once a second - and once it has faded out the node is hidden: a sphere this size
-## is a transparent pass over a good part of the screen, paid for nothing on an idle unit.
+## THE FIELD IS UP WHENEVER THE UNIT IS MOUNTED AND POWERED (the player's call, taken back from
+## "only while there is something to mend": the field says the unit works, not that it is mending).
+## Unpowered or loose it is hidden at once (`_field_off`); it eases in over FIELD_FADE.
 const FIELD_ALPHA := 0.09
 ## How fast the field eases between off and its working brightness.
 const FIELD_FADE := 0.4
@@ -39,7 +37,6 @@ var _timer: float = 0.0
 var _field: MeshInstance3D = null
 var _field_mat: ShaderMaterial = null
 var _alpha: float = 0.0
-var _busy: bool = false            # the last tick found something in reach to mend
 
 func _ready() -> void:
 	super._ready()
@@ -322,7 +319,7 @@ func _work(delta: float) -> bool:
 	if not powered:
 		_field_off()
 		return false
-	_fade_field(delta, FIELD_ALPHA if (_busy or not _flights.is_empty()) else 0.0)
+	_fade_field(delta, FIELD_ALPHA)
 	_timer -= delta
 	if _timer > 0.0:
 		return true
@@ -341,7 +338,6 @@ func _work(delta: float) -> bool:
 	for b in _blocks_in_field():
 		if b.current_hp + int(pending.get(b.get_instance_id(), 0)) < b.max_hp:
 			need.append(b)
-	_busy = not need.is_empty()
 	if need.is_empty():
 		return true
 	if need.size() > max_bodies:
@@ -422,7 +418,6 @@ func _show_field(on: bool) -> void:
 
 ## Not mounted or not powered: no field at once, and the next start eases in from nothing.
 func _field_off() -> void:
-	_busy = false
 	_alpha = 0.0
 	_show_field(false)
 

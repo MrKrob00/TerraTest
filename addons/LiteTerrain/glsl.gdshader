@@ -133,6 +133,16 @@ const float SH_FADE = 1.0 / 6.0;
 #endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
+// THE PLAYER'S TEST SWITCHES (garage settings, ChunkTerrain.ground_opts; all off = the ground as it
+// was): defines, not uniforms - a branch on a uniform still costs the fill on the phone, a define
+// takes the code out of the variant. NO_COLOR_NOISE drops the per-pixel colour hash, DETAIL_NEAR
+// draws the detail only out to DETAIL_FAR (faded in DETAIL_FADE before it) instead of to the solid
+// haze, ONE_PLANE takes the detail on the ground's plane everywhere (canyon walls streak).
+#ifdef DETAIL_NEAR
+const float DETAIL_FAR = 80.0;
+const float DETAIL_FADE = 20.0;
+varying float v_det;
+#endif
 
 varying vec3  v_base_col;
 varying float v_is_grass;
@@ -190,6 +200,9 @@ void vertex() {
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
     v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
+#ifdef DETAIL_NEAR
+    v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
+#endif
 #ifdef FAST_GROUND
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
@@ -293,12 +306,22 @@ void fragment() {
     // on faces steeper than 45 deg, where both projections read alike. Per FRAGMENT: picked per
     // vertex, one triangle's corners would sit in different planes.
     // Под сплошной дымкой попиксельной детали не видно — не считаем её вовсе (см. шапку).
+#ifdef DETAIL_NEAR
+    if (v_det > 0.0) {
+#else
     if (v_haze < HAZE_FLAT) {
+#endif
+#ifdef ONE_PLANE
+        vec2 wall = v_wpos.xz;
+#else
         vec2 wall = abs(v_wnrm.y) > 0.5
                 ? v_wpos.xz                                                  // пол и склоны
                 : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
+#endif
+#ifndef NO_COLOR_NOISE
         vec2 noise_uv = floor(wall / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
         base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
+#endif
         // one fetch: the detail masks (see the uniforms)
         vec4 dt = texture(ground_detail, wall / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
@@ -306,6 +329,9 @@ void fragment() {
         k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
         k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
+#ifdef DETAIL_NEAR
+        k = mix(1.0, k, v_det);
+#endif
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
