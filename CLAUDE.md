@@ -2107,6 +2107,14 @@ project: read it before claiming how anything works.
   looked like. THE SIGN is "WORLD" over badge + "TECH" in a grid font on a blue slab, the bevels and
   the letters' shadow painted. Measured on the real driver through the whole run and through a skip:
   the cabin shown and unfrozen, one crash site, the HUD and the tracker back, the game camera current.
+  THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"):
+  `world_persist._play_intro` gives it `INTRO_WAIT` to start and `INTRO_RUN` to finish, and on a
+  script that does not load, or past either, takes it down, makes the game camera current and lays
+  the crash site and the kit itself. AND NOTHING IS SAVED BEFORE `world_ready` (`_save_world`): a
+  pause, a close or the back key mid-intro wrote the new world's bare cabin, and every later load came
+  back to it with no intro, no kit and no site. Measured on a clean checkout through the menu's own
+  way in (the loading overlay): the whole run, a pause at 3 s (no save written, the start laid on
+  landing), a stall at 3 s (the start laid after `INTRO_RUN`), and no script (laid at once, 8 blocks).
 
 ### The proving ground
 
