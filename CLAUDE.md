@@ -2087,8 +2087,10 @@ project: read it before claiming how anything works.
   START POINT - and THAT LANDING lays the smouldering ground, glitches the cabin in and hands out the
   kit; then the camera glides into the game camera. Raised by `world_persist._fresh_start` (a new
   world only, not the proving ground; the debug switch `intro` on Main skips it), which awaits its
-  `finished`. It starts when the loading screen begins to dissolve. A TAP SKIPS IT, and skipping lays
-  the same start. Nothing in it is physics: the capsule, the sign and the debris are pictures on the
+  `finished`. It starts when the loading screen begins to dissolve. A DOUBLE TAP SKIPS IT (`SKIP_DOUBLE`;
+  a single tap did, and a stray touch took the intro away - the player's report), counted once a
+  finger (the emulated mouse and touch carry `DEVICE_ID_EMULATION` and are not counted), and skipping
+  lays the same start. Nothing in it is physics: the capsule, the sign and the debris are pictures on the
   intro's own camera, and the cabin stands hidden and frozen on its start point the whole time (meta
   `intro_hidden`, which `world_persist`'s cull pass honours, or it would show the cabin again the next
   frame). EVERY UI LAYER OF THE SCENE IS HIDDEN, NOT ONLY THE HUD (the player: "the quests stayed
