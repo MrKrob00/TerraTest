@@ -41,7 +41,9 @@ func _convert(n: String) -> void:
 		var mesh := mi.mesh as ArrayMesh
 		mesh.surface_set_material(0, mat)
 		mesh.resource_name = String(mi.name)
-		var dst := "res://blocks/meshes/%s.tres" % String(mi.name)
+		# the planetfall intro's models are not blocks (art/intro_models.py)
+		var dir := "res://resources/intro/" if n.begins_with("intro_") else "res://blocks/meshes/"
+		var dst := dir + "%s.tres" % String(mi.name)
 		var err := ResourceSaver.save(mesh, dst)
 		print("saved ", dst, " err ", err, " tris ", mesh.surface_get_array_index_len(0) / 3)
 	scene.free()
