@@ -87,7 +87,7 @@ size = Vector3(1.1, 1.1, 1.1)
 length = 50.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_jka67"]
-radius = 150.0
+radius = 110.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_a202f"]
 radius = 100.0

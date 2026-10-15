@@ -2694,6 +2694,24 @@ project: read it before claiming how anything works.
   textureless button's area from its corner. Measured with real touches: the disc takes its middle
   and rim and not the square's corner, the camera and the world tap both skip it, a touch holds the
   Attack action; on the real driver both states of both buttons drawn as meant.
+- **THE MOVEMENT STICK IS A FLOATING STICK IN A BOUNDED CORNER, SIZED BY THUMBS, NOT BY THE SCREEN**
+  (`joystick.gd`; the player: "it takes too much of the screen where it can appear", and "make it
+  nicer"). A press in `ZONE` - a quarter ellipse 400 x 320 from the bottom-left corner - or on the
+  resting stick puts the base under the thumb; let go, it glides back to `REST` (205, 185 in from the
+  corner). The numbers are measured thumbs: players' first touches on a left stick land 15.6-25.4 mm
+  from the corner and the stick's centre sits 9.8-19.4 mm from the edges (Li et al., Chinese CHI 2021),
+  and a canvas unit on a phone is ~1/12 mm (`Main._apply_ui_scale` sizes the UI physically), so the
+  zone is ~33 x 27 mm and stays in UNITS - a share of the screen grows with the screen, a thumb does
+  not. It was the left 33 % by the bottom 40 % (~55 x 30 mm on a 20:9 phone) plus a 150-unit circle
+  round wherever the last press began. The reach is `BASE_R` 110 (~9 mm; it was 150, so full throttle
+  needs less of the thumb). A press on a HUD control in the zone (`HUD_PANELS`: the anchor button, the
+  build panels) is the control's - the stick's `_input` runs before the GUI. THE BASE KEEPS ON SCREEN
+  AND THE STICK READS THE THUMB FROM WHERE IT LANDED (`_landed`): clamped inward from a press in the
+  very corner, it read the offset as full lock before the thumb moved. Drawn in the HUD's fill and
+  teal ring: four chevrons that light toward the push, an arc outside the rim along it (on the rim the
+  knob covered it), a bevelled knob; faint at rest. It ticks only while it eases. Measured with
+  synthetic touches on the real driver: claimed in the zone and on the resting stick, not past it;
+  a push (70, -50) reads (0.61, -0.44); a corner press reads (0, 0); released, it is home and idle.
 - THE WORLD TAP IS ONE FINGER, TRACKED BY INDEX (`vehicle_body_3d._build_tap_idx`), and the
   joystick's finger is not counted (`_joystick_finger`, `_joystick_held`). Counting it made every tap
   while driving "two fingers down", and every twitch of the stick a drag that marked the tap as a

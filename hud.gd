@@ -156,8 +156,8 @@ func _relayout() -> void:
 	# от текущего размера (джойстики всё равно прыгают под палец при касании — это лишь
 	# позиция покоя, но её видно). Держим авторский отступ у базы 1280×720.
 	var jm := get_node_or_null("Joystick_movement") as Node2D
-	if jm:
-		jm.position = Vector2(186, screen.y - 249)         # низ-слева (реген у базы 720 = y 471)
+	if jm and jm.has_method("place_rest"):
+		jm.place_rest(screen)                              # its rest spot is its own (joystick.REST)
 	var jc := get_node_or_null("Joystick_camera") as Node2D
 	if jc:
 		jc.position = Vector2(screen.x - 117, 141)         # право-сверху (реген у базы 1280 = x 1163)
