@@ -1684,13 +1684,23 @@ project: read it before claiming how anything works.
 - **THE GROUND'S DETAIL IS ONE TEXTURE OF FOUR MASKS, IN THE ONE FETCH THE OLD TILE SPENT**
   (`art/ground_detail.py` -> `addons/LiteTerrain/ground_detail.png`, set by
   `TerrainBiomes.apply_to_material`; the player's call, after TerraTech's ground): R cracked earth
-  (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B grass
-  clumps, A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
+  (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B painted
+  grass (below), A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
   ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
   `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
   MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
   drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
   geometry baked into chunks; a note here used to say there was.
+- **THE MEADOW IS PAINTED** (the player's reference, a hand-painted forest floor - "the style, not the
+  place": no paths or clearings, a first cut drew them and was turned down). B is BRUSH DABS round a
+  neutral 0.5 (`ground_detail.grass`: leaf-shaped strokes in three sizes, each leaning to the tone of
+  an irregular clump field and pushed clearly lighter or darker; the clumps came from a few sines
+  first and read as stripes once the 9 m tile repeated, so they are blurred white noise now), and the
+  shader turns a dab into a HUE, not a shade (`stroke_dark` cool blue-green, `stroke_light` warm
+  yellow-green, `grass_detail` 1.0); over the meadow a ~25 m vertex noise moves the tone between cool
+  shade and warm sun, so the tile never reads as a tile; the greens are brighter (`color_grass`
+  0.36/0.60/0.21, `grass_shade` 0.80, were 0.33/0.56/0.23 and 0.62). Same one fetch, a vertex noise
+  more: checked on the real driver against the old meadow from three views.
 - **THE SALT FLATS ARE THE FIFTH BIOME** (TerraTech's dried lake bed, the player's first screenshot):
   `TerrainBiomes.salt_mask` - only on the desert, never under mountains. The land eases down to a bed
   made of the SAME base noise read at a twentieth of its frequency (`terrain_gen.raw_height_at`), so

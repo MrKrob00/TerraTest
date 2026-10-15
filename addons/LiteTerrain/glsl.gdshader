@@ -23,8 +23,14 @@ group_uniforms Texture;
 uniform sampler2D ground_detail : hint_default_white, filter_nearest_mipmap, repeat_enable;
 uniform float detail_world_size : hint_range(1.0, 40.0)  = 9.0;
 uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
-uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
+uniform float grass_detail      : hint_range(0.0, 1.0)   = 1.0;
 uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
+// THE PAINTED MEADOW (the player's reference: a hand-painted forest floor). The detail's B channel is
+// brush dabs round a neutral 0.5 (art/ground_detail.py): below it the grass turns toward stroke_dark,
+// above toward stroke_light - a shift of HUE, cool dark green against warm yellow-green, not only of
+// shade. The STYLE only, the player's word: no paths or clearings were asked for, and none are drawn.
+uniform vec3  stroke_dark  : source_color = vec3(0.62, 0.80, 0.84);
+uniform vec3  stroke_light : source_color = vec3(1.30, 1.20, 0.74);
 
 group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // warm golden sand (desert)
@@ -143,6 +149,15 @@ float hash2D(vec2 p) {
     return fract(p.x * p.y);
 }
 
+// Value noise on the hash lattice: vertex work only (a few per vertex), never per pixel.
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2D(i), hash2D(i + vec2(1.0, 0.0)), f.x),
+               mix(hash2D(i + vec2(0.0, 1.0)), hash2D(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
 // THE BLADE AT ONE WORLD POINT: whether it grows (the hash against the meadow share) and how far
 // the trample map presses it down. A function of the point and nothing else.
 float blade_at(vec2 p, float amount) {
@@ -240,6 +255,10 @@ void vertex() {
     float grass_amount = mix(sand_grass, 1.0, biome_grass)
             * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain) * (1.0 - salt);
     v_is_grass = clamp(grass_amount, 0.0, 1.0);
+    // the painted meadow: a slow change of tone (~25 m) between a cool shade and a warm sunny green,
+    // so the dabs' 9 m tile never reads as a tile. Per vertex.
+    float tone = vnoise(world_pos.xz * 0.04 + vec2(5.0, 9.0));
+    v_base_col *= mix(vec3(1.0), mix(vec3(0.82, 0.92, 0.96), vec3(1.14, 1.10, 0.84), tone), v_is_grass);
     // both carry their uniform's strength already: a multiply a vertex, not a pixel
     v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0)
             * ripple_strength;
@@ -286,11 +305,12 @@ void fragment() {
         vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
         k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert);
-        k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
         k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
         k = mix(1.0, k, v_det);
-        base_col = clamp(base_col * k, 0.0, 1.0);
+        // the painted grass: each dab shifts the hue, dark ones cool, light ones warm
+        vec3 tint = mix(stroke_dark, stroke_light, dt.b);
+        base_col = clamp(base_col * k * mix(vec3(1.0), tint, v_is_grass * grass_detail * v_det), 0.0, 1.0);
     }
 
     // Below grass_shade 0.65 the grass sits slightly darker than the ground — a soft shadow at
