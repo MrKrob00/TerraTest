@@ -279,7 +279,7 @@ func _apply_ore_colors() -> void:
 ## union of their shadows is the outline's, with no hull to take per vein and per light.
 var _crown_of: Dictionary = {}
 var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5:
-                                     # the outline's surface as triangles in model space
+									 # the outline's surface as triangles in model space
 ## The same records BY REGION, each with its revision: [[region key, rev, records], ...], the proving
 ## ground's own veins last under `MADE_RK`. A region whose rev has not moved casts what it cast, so the
 ## shadow map keeps its triangles whole and a move costs only the regions that came in.
