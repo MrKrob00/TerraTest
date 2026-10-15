@@ -238,6 +238,18 @@ pushed into a slope) hides nothing at all - otherwise every ray stops at its fir
 | тик целиком (`_select` + `_retire` + `_sort_queues`) | 7500 мкс | **2400 мкс** |
 | доля кадра 60 fps, пока камера крутится | 22 % | **6 %** |
 
+## A hold: the ground taken round a point, not the camera
+
+`hold_at(world_pos)` / `release_hold()`. While a hold is up the leaf set is the one a camera standing
+at the hold would want (`_select` takes the leaves round `_hold`, so the camera moving rebuilds
+nothing), drawn only where the real camera looks; a leaf within `HOLD_RADIUS` of the hold is wanted
+off the frame too and never let go (`_near_player`), and both build queues run nearest the hold
+first. The planetfall intro raises one on the start point (8 m up: a hold is a camera standing there)
+for as long as its camera is in the sky - without it the leaf set chased a camera falling at 62 m/s a
+kilometre up, built fine ground under it that nobody saw (the mesh queue grew 175 -> 395 over the
+intro on the optimize=none build) and let the landing site's ground go coarse; with it the queue was
+empty by the sign, and the intro ran 9 -> 13 fps there.
+
 ## HLOD: far leaves merged
 
 Drawn leaves of level 2..6 are grouped by their level-6 cell (1024 m) and merged into one mesh per

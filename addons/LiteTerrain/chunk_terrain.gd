@@ -974,11 +974,38 @@ const LEAF_MOVE2 := 256.0                     # 16 м, один базовый �
 const RELIEF_REBUILD_MS := 1000
 var _leaf_ms: int = 0
 
+## WHILE A HOLD IS UP THE GROUND IS TAKEN ROUND IT, NOT ROUND THE CAMERA (`hold_at` / `release_hold`;
+## the player: holes where the machine lands at the end of the planetfall intro). The intro flies its
+## camera from a kilometre up down to the start point at 62 m/s, looking mostly at the sky, and a leaf
+## set taken round that camera rebuilt itself every 16 m of the flight, built fine ground under it
+## that nobody saw (measured on the optimize=none build: 175 -> 395 meshes queued over the intro) and
+## let the start point's ground go coarse, so the landing waited on a rebuild. With a hold the leaves
+## are the ones a camera standing at the hold would want, still drawn only where the real camera
+## looks; a leaf within HOLD_RADIUS of it is wanted off the frame too (built and kept: the engine
+## culls what is not seen), the build queue runs nearest the hold first, and nothing near it is let go.
+const HOLD_RADIUS := 400.0
+var _hold := Vector3.ZERO      # in the node's axes
+var _holding: bool = false
+
+func hold_at(world_pos: Vector3) -> void:
+	_hold = global_transform.affine_inverse() * world_pos
+	_holding = true
+	_leaf_vd = -1.0                # the leaves are taken again on the next tick
+
+func release_hold() -> void:
+	if _holding:
+		_holding = false
+		_leaf_vd = -1.0
+
+func _near_hold(lod: int, gx: int, gz: int) -> bool:
+	return _holding and _aabb_dist2(_node_aabb(lod, gx, gz), _hold) <= HOLD_RADIUS * HOLD_RADIUS
+
 ## cull = false — берём всё вокруг точки, без отсечения по кадру. Нужно входу в сохранённый мир:
 ## земля строится вокруг машины, а камера в этот момент ещё смотрит из начала сцены.
 func _select(at: Vector3, cull: bool = true) -> void:
-	var mx: float = at.x - _leaf_at.x
-	var mz: float = at.z - _leaf_at.z
+	var lc: Vector3 = _hold if _holding else at
+	var mx: float = lc.x - _leaf_at.x
+	var mz: float = lc.z - _leaf_at.z
 	# По высоте не сверяемся: расстояние до узла меряется по земле (см. _aabb_dist2), и подъём
 	# камеры на орбите набор листьев не меняет.
 	var now_ms: int = Time.get_ticks_msec()
@@ -987,7 +1014,7 @@ func _select(at: Vector3, cull: bool = true) -> void:
 		_relief_new = false
 		_leaf_ms = now_ms
 		_measure_px()
-		_build_leaves(at)
+		_build_leaves(lc)
 	_prev_want = _want
 	_want = {}
 	var n: int = _leaf_keys.size()
@@ -1006,8 +1033,13 @@ func _select(at: Vector3, cull: bool = true) -> void:
 					+ _pl[q3 + 2] > 0.0:
 				vis = false
 				break
-		if vis:
+		if vis or (_holding and _box_near_hold(b)):
 			_want[_leaf_keys[i]] = true
+
+func _box_near_hold(b: int) -> bool:
+	var dx: float = maxf(maxf(_leaf_box[b] - _hold.x, 0.0), _hold.x - _leaf_box[b + 2])
+	var dz: float = maxf(maxf(_leaf_box[b + 1] - _hold.z, 0.0), _hold.z - _leaf_box[b + 3])
+	return dx * dx + dz * dz <= HOLD_RADIUS * HOLD_RADIUS
 
 func _build_leaves(at: Vector3) -> void:
 	_leaf_gen += 1
@@ -1646,6 +1678,8 @@ func _in_frame_key(key: int) -> bool:
 var keep_radius: float = 320.0
 
 func _near_player(key: int) -> bool:
+	if _near_hold(_key_lod(key), _key_gx(key), _key_gz(key)):
+		return true
 	if keep_radius <= 0.0:
 		return false
 	return _aabb_dist2(_node_aabb(_key_lod(key), _key_gx(key), _key_gz(key)), _sel_local) \
@@ -2556,7 +2590,7 @@ func _ground_tick(delta: float) -> void:
 	_retire(now)
 	_held_dirty = true
 	_hlod_dirty = true
-	_sort_queues(cam_local)
+	_sort_queues(_hold if _holding else cam_local)
 	_tick_ep = _cover_ep
 	_pf_mark("terrain_lod", t0)
 

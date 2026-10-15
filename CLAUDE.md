@@ -1589,6 +1589,15 @@ project: read it before claiming how anything works.
   long, and a metre-sized threshold would rebuild the whole way round. The price is that an LOD
   boundary lags by those 16 m, which is ordinary hysteresis and not a hole: the ground is there,
   the seam is stitched, and collision runs its own queue along the body's corridor.
+- **WHILE A HOLD IS UP THE GROUND IS TAKEN ROUND IT, NOT ROUND THE CAMERA** (`ChunkTerrain.hold_at` /
+  `release_hold`, raised by the planetfall intro on the start point; the player: holes where the
+  machine lands). The intro flies its camera from a kilometre up at 62 m/s looking mostly at the sky,
+  and a leaf set round that camera rebuilt itself every 16 m, built fine ground under it nobody saw
+  and let the start point's ground go coarse. With a hold the leaves are those a camera standing at
+  the hold would want (drawn only where the real camera looks), a leaf within `HOLD_RADIUS` of it is
+  wanted off the frame too and never let go (`_near_player`), and the build queue runs nearest the
+  hold first. Measured on the optimize=none build through the intro: the mesh queue 175 -> 395 before,
+  157 -> 0 by the sign after, and the intro's frame rate there 9 -> 13 fps.
 - THE FIRST RING IS BUILT AT THE START POINT: the camera in a new world, and in a LOADED one the
   primary machine's saved position, read straight out of the save (`G.saved_start_point`). The
   machine returns to its place only AFTER the terrain is ready — `world_persist` waits for it — so
@@ -2050,7 +2059,12 @@ project: read it before claiming how anything works.
   Such a base carries meta `quest_id` and that tag is saved with the machine (`world_persist`), or
   every load would stand a second base next to the first — the arc's own state is memory only.
 - THE TUTORIAL IS BUILDING THE MACHINE AND NOTHING ELSE (four steps: BUILD, take a part, attach it,
-  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone), and THE
+  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone). THE
+  GAME TAKES THE BUILD STEP ITSELF (the player's call: the tutorial opens in assembly): once the
+  machine stands in the world - the planetfall intro over (group `planetfall_intro`), `intro_hidden`
+  gone, `G.world_ready` - `tutorial_director` calls the machine's own `_on_building_pressed`, the door
+  the BUILD button's action reaches, which reports the step; the HUD follows the machine's state and
+  opens the build tab. Measured: after the intro the machine is building and `tut_mode_build` done. And THE
   SCOUT IS THE FIRST STORY QUEST (`story_first_blood`). Non-obvious gestures are a Mechanic line at
   the end. THE SCOUT HAS ITS OWN BUILD (`blocks.STORY_SCOUT`, 126: a cabin, one block, four small
   wheels, one machine gun - the player's call; a roll of the bottom step brought a shotgun and a gun
@@ -2107,8 +2121,33 @@ project: read it before claiming how anything works.
   white band between red lines and a vent field on its back, a PYRAMID of eight flat faces down to a
   CYLINDER, a blunt scorched nose - the first cut, an egg on a neck, was turned down for what it
   looked like. THE SIGN is "WORLD" over badge + "TECH" in a grid font on a blue slab, the bevels and
-  the letters' shadow painted. Measured on the real driver through the whole run and through a skip:
+  the letters' shadow painted; the badge's cube is seen FROM ABOVE - its edges run from the middle to
+  the upper-left, upper-right and bottom corners, where its shading splits (drawn to the other three
+  they cut the faces in half and the player read the middle as sunk). Measured on the real driver through the whole run and through a skip:
   the cabin shown and unfrozen, one crash site, the HUD and the tracker back, the game camera current.
+  **ONE CAMERA MOVE, NO CUTS, THE CAPSULE NEVER OUT OF FRAME** (the player: the cut to the sign came
+  seconds before the capsule, and cuts read as teleports): the camera rides the capsule's line ahead of
+  it looking back, swings round the line from one side OVER THE TOP to the other (never under: from
+  below it looks straight up and `_look`'s up vector flips), races ahead (`RUN_LEAD`), brakes
+  (`_lead` integrates the smoothstep in closed form, so any moment can be asked for), and the capsule
+  comes at it past the sign, which is placed FROM the braked camera (`LOGO_BACK` behind the blast,
+  `LOGO_LIFT` up in its picture) so the capsule is nearer than the sign wherever their pictures overlap
+  - it passes beside the sign and blows up in front of it. Then the camera comes down to the meadow
+  with the main piece, its height dropping only from `T_DROP` so it looks down on the falling piece
+  rather than up into the sky, and stands still `T_SETTLE` before the piece lands. Tuned on a model of
+  the path and checked on the real driver: the capsule on screen in every frame, the sign in frame
+  ~2.7 s. THE START POINT'S GROUND IS HELD (`ChunkTerrain.hold_at`, under Terrain) while the camera is
+  in the sky. THE FIRST HIT USED TO HITCH: the smoke cards' shader and the burnt blocks' material
+  compiled in that frame (CLAUDE.md "A SHADER IS COMPILED THE FIRST TIME"), so `_warm` draws a puff at
+  zero opacity and a speck of burnt block inside the capsule in the first frames.
+  **THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS** (the player's design; `Music.set_held`, not the
+  player's `enabled` switch): wind round the capsule from the start (a loop, louder and higher as it
+  falls), a quiet "piu-piu" alarm loop from the hit, both cut at the blast; the blast; and the main
+  piece falling - a descending whistle and a rising rush ending in a thud timed to its landing
+  (`art/intro_sounds.py` `FALL_HIT` = `T_LAND[MAIN] - T_BOOM`). Synthesised by `art/intro_sounds.py`
+  into `resources/intro/intro_*.wav` (22 kHz mono; the loops carry a WAV `smpl` chunk, which the
+  importer's "Detect From WAV" reads - measured, both come in as forward loops), loaded at run time
+  so a sound not yet imported is silence, never a script that fails to load; a skip stops them.
   THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"):
   `world_persist._play_intro` gives it `INTRO_WAIT` to start and `INTRO_RUN` to finish, and on a
   script that does not load, or past either, takes it down, makes the game camera current and lays

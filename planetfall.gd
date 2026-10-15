@@ -6,17 +6,24 @@ extends Node3D
 ## into is the real one - the player's cabin stands hidden on its start point (meta `intro_hidden`,
 ## which world_persist's culling pass honours) until the last piece of debris lands on it.
 ##
-## The shots, on one clock (T_*), cut like a film - the capsule's path is one straight line, every
-## shot puts the camera where that line looks best:
-##   0     chase from below, the capsule against the sky, heat on its nose     "...planetfall stage."
-##   4     the other side                                                      "...stage two."
-##   5.6   a burnt piece of something crosses it: sparks, then smoke
-##   7.6   chase, burning, a smoke trail                                       "Payload failure..."
-##   11    a fixed camera it whips past                                        "Crash landing imminent..."
-##   12.6  the WORLDTECH sign in the sky; it crosses in front and blows up     "Brace! Brace! BRACE!"
-##   16.4  the meadow: three burning pieces fall trailing smoke, the last onto the start point -
-##         the smouldering ground (crash_site.gd), the cabin glitches in, the kit drops
+## ONE CAMERA MOVE, NO CUTS, AND THE CAPSULE NEVER LEAVES THE FRAME (the player: the cut to the sign
+## came seconds before the capsule did, and a camera that jumps reads as a teleport). The capsule's
+## path is one straight line; the camera rides it ahead of the capsule looking back at it, swinging
+## round the line from one side over the top to the other, then races ahead, brakes, and lets the
+## capsule come at it past the sign. On one clock (T_*):
+##   0     ahead of the capsule, below it, the capsule against the sky        "...planetfall stage."
+##   5.6   a burnt piece of something crosses it: sparks, then smoke         "...stage two." at 4
+##   10    the camera races ahead, swings out to the side, and brakes         "Payload failure..." at 7.6
+##   ~14   the WORLDTECH sign slides in behind the capsule's path; the aim leans from the capsule toward it
+##   15.6  the capsule passes beside the sign and blows up in front of it    "Brace! Brace! BRACE!"
+##   then  the camera comes down with the main piece onto the meadow, three burning pieces trailing
+##         smoke, and stands still before it lands on the start point - the smouldering ground
+##         (crash_site.gd), the cabin glitches in, the kit drops
 ##   20.8  the camera glides into the game camera behind the cabin; the HUD comes back
+## The numbers were tuned on a model of this path (the capsule never past 80% of the way to the
+## frame's edge, nor behind the sign; the sign in frame ~2.7 s; the camera never nearer than 70 m to
+## it, never looking within 47 deg of straight up or down, never turning faster than ~150 deg a
+## second); retune the camera and the sign together - the sign is placed from the camera.
 ##
 ## NO PARTICLES (CLAUDE.md rule 11): smoke is a MultiMesh of pixel cards (resources/intro/
 ## smoke_card.gdshader), fire and sparks are BlockFX glitch cards, the speed streaks crossed strips.
@@ -31,13 +38,8 @@ const STREAK_SHADER := preload("res://resources/intro/streak.gdshader")
 const BLOCK_SCENE := "res://blocks/scenes/block.tscn"
 const ATLAS := preload("res://objects/Assets_main_texture_new.png")
 
-const T_STAGE2 := 4.0
 const T_HIT := 5.6            # the passing debris strikes the capsule
-const T_CHASE := 7.6
-const T_PASS := 11.0          # the fixed camera it whips past
-const T_LOGO := 12.6          # the sign
-const T_BOOM := 15.6          # blows up in front of it
-const T_GROUND := 16.4        # the meadow
+const T_BOOM := 15.6          # blows up in front of the sign
 const T_LAND := [19.4, 19.8, 20.3]   # the debris lands; MAIN lands on the start point
 const MAIN := 1
 const T_HANDOVER := 20.8
@@ -54,12 +56,35 @@ const BOOM_BACK := 140.0      # the explosion: this far back from the start poin
 const BOOM_UP := 240.0        # and this high over it
 const LOGO_SCALE := 7.0       # the sign's model is 11.75 m wide
 const DEBRIS_SPREAD := 20.0
+const FALL_EASE := 0.85       # a falling piece's speed as it leaves the blast, a share of its mean
+
+# the camera (see the header): how far ahead of the capsule, how far off its line, and round it
+const LEAD := Vector2(14.0, 19.0)   # ahead along the line at the start, and once the chase settles
+const T_RUN := 10.0           # it races further ahead from here...
+const T_RUN_END := 13.6
+const RUN_LEAD := 85.0        # ...to this far ahead
+const T_BRAKE := 13.0         # and brakes, so the capsule comes at it
+const T_BRAKED := 15.4
+const HOLD_SPEED := 22.0      # what it keeps along the line once braked, m/s
+const SIDE := Vector2(9.0, 30.0)    # off the line: in the chase, braked
+const SWING := Vector2(0.35, 2.5)   # round the line, rad: from its side over the top to the other
+const T_SWING := 12.5
+const LEAN := 0.58            # how far the braked camera's aim leans from the capsule to the sign
+const LOGO_BACK := 90.0       # the sign stands this far behind the blast as the braked camera sees it
+const LOGO_LIFT := 26.0       # and this much up in its picture: the blast before its lower half
+const T_DESCENT := 0.4        # after the blast it comes down to the meadow...
+const T_DROP := 1.3           # ...dropping only from here, so the falling piece goes below it: it
+                              # looks down on the piece with the meadow behind, not up into the sky
+const T_SETTLE := 0.3         # ...and stands still this long before the main piece lands
+const END_BACK := 50.0        # where it stands: behind the start point along the fall,
+const END_SIDE := 45.0        # on the side the camera came down
+const END_UP := 16.0
 
 const LINES := [
 	[0.4, "Falsus deployment unit FX-2041 entering planetfall stage."],
-	[T_STAGE2, "Entering planetfall stage two."],
-	[T_CHASE, "Warning! Payload failure on survey mission Alpha #812311."],
-	[T_PASS, "Crash landing imminent. Initiating emergency salvage protocol."],
+	[4.0, "Entering planetfall stage two."],
+	[7.6, "Warning! Payload failure on survey mission Alpha #812311."],
+	[11.0, "Crash landing imminent. Initiating emergency salvage protocol."],
 	[13.4, "Brace! Brace! BRACE!"],
 ]
 
@@ -70,6 +95,17 @@ const SPARK_B := Color(0.6, 0.85, 1.0)
 
 const SMOKE_CAP := 1024
 const STREAKS := 28
+
+## THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS (the player's call; Music.set_held): wind round the
+## capsule from the start, a quiet repeating alarm from the hit, both until the blast, the blast, and
+## the main piece falling, ending in its thud as it lands. Synthesised by art/intro_sounds.py; loaded
+## at run time, so a sound not imported yet is silence, never a script that fails to load.
+const SND := "res://resources/intro/intro_%s.wav"
+const WIND_DB := -7.0
+const ALARM_DB := -15.0
+const BOOM_DB := -1.0
+const FALL_DB := -4.0
+const T_ALARM := T_HIT + 0.35
 
 var _t: float = 0.0
 var _running: bool = false
@@ -103,7 +139,9 @@ var _said: int = 0
 var _landed_main: bool = false
 var _kit_given: bool = false
 var _skip_lbl: Label = null
-var _cam_e := Transform3D()     # the meadow shot's pose, where the hand-over starts from
+var _snd: Dictionary = {}       # name -> AudioStreamPlayer
+var _cam_end := Vector3.ZERO    # where the camera stands as the main piece lands
+var _sign_aim := Vector3.ZERO   # between the blast and the sign: where the braked camera's aim leans
 
 # smoke: one MultiMesh of pixel cards in world space
 var _sm: MultiMeshInstance3D
@@ -123,6 +161,7 @@ var _sbuf := PackedFloat32Array()
 static func make(parent: Node, at: Vector3, machine: Node3D) -> Node3D:
 	var p: Node3D = load("res://planetfall.gd").new()
 	p.name = "Planetfall"
+	p.add_to_group("planetfall_intro")       # the tutorial waits for the intro to end
 	parent.add_child(p)
 	p.call("_begin", at, machine)
 	return p
@@ -141,6 +180,10 @@ func _begin(at: Vector3, machine: Node3D) -> void:
 	_n = _f.cross(Vector3.UP).normalized()
 	_d = (_f + Vector3.DOWN * DIVE).normalized()
 	_p_end = _s - _f * BOOM_BACK + Vector3.UP * BOOM_UP
+	# the ground the camera comes down on stays built while the camera is away (ChunkTerrain.hold_at):
+	# a held point is a camera standing there, so it stands where the game camera will
+	_hold_ground(true)
+	_hold_music(true)
 	set_process(false)
 	await _wait_for_screen()
 	if not is_inside_tree():
@@ -148,6 +191,61 @@ func _begin(at: Vector3, machine: Node3D) -> void:
 	_build()
 	_running = true
 	set_process(true)
+
+func _hold_ground(on: bool) -> void:
+	var map: Node = get_node_or_null("/root/Main/map")
+	if map == null or not map.has_method("hold_at"):
+		return
+	if on:
+		map.hold_at(_s + Vector3.UP * 8.0)
+	else:
+		map.release_hold()
+
+func _hold_music(on: bool) -> void:
+	var m: Node = get_node_or_null("/root/Music")
+	if m != null and m.has_method("set_held"):
+		m.set_held(on)
+
+func _build_sound() -> void:
+	for which in ["wind", "alarm", "boom", "fall"]:
+		var path: String = SND % which
+		var st: AudioStream = load(path) if ResourceLoader.exists(path) else null
+		if st == null:
+			continue
+		var p := AudioStreamPlayer.new()
+		p.stream = st
+		add_child(p)
+		_snd[which] = p
+	_play("wind", -40.0)
+
+func _play(which: String, db: float) -> void:
+	var p: AudioStreamPlayer = _snd.get(which)
+	if p != null:
+		p.volume_db = db
+		p.play()
+
+func _stop_sound() -> void:
+	for p in _snd.values():
+		if is_instance_valid(p):
+			(p as AudioStreamPlayer).stop()
+
+func _tick_sound() -> void:
+	var wind: AudioStreamPlayer = _snd.get("wind")
+	if wind != null and wind.playing:
+		# in with the dissolving loading screen, a little faster and louder as the fall goes on
+		wind.volume_db = lerpf(-40.0, WIND_DB, smoothstep(0.0, 1.6, _t)) + (2.0 if _t >= T_HIT else 0.0)
+		wind.pitch_scale = lerpf(0.9, 1.12, clampf(_t / T_BOOM, 0.0, 1.0))
+	var alarm: AudioStreamPlayer = _snd.get("alarm")
+	if alarm != null and not alarm.playing and _t >= T_ALARM and _t < T_BOOM:
+		_play("alarm", ALARM_DB)
+	if _t >= T_BOOM and not has_meta("snd_boom"):
+		set_meta("snd_boom", true)
+		for n in ["wind", "alarm"]:
+			var p: AudioStreamPlayer = _snd.get(n)
+			if p != null:
+				p.stop()
+		_play("boom", BOOM_DB)
+		_play("fall", FALL_DB)          # its thud is timed to land with the main piece
 
 func _wait_for_screen() -> void:
 	var guard: int = 0
@@ -184,7 +282,20 @@ func _build() -> void:
 	_build_logo()
 	_build_smoke()
 	_build_skip_hint()
+	_build_sound()
+	_warm()
 	_place_camera(0.0)
+
+## WHAT FIRST DRAWS AT THE HIT IS DRAWN ONCE NOW (the player: a hitch as the capsule is struck and
+## the smoke starts): a shader compiles the first time something draws with it, and the frame waits -
+## the smoke cards and the burnt blocks' material were both new at the hit. A puff at zero opacity and
+## a speck of burnt block inside the capsule, for the first frames, under the dissolving loading screen.
+func _warm() -> void:
+	_puff(_pod_at(0.0), Vector3.ZERO, 0.5, 0.5, 0.4, 1.0, 0.0)
+	var speck: Node3D = _chunk(1, 0.001)
+	add_child(speck)
+	speck.global_position = _pod_at(0.0)
+	get_tree().create_timer(0.4).timeout.connect(speck.queue_free)
 
 ## The world's environment with the sky's LOWER HALF in the haze's colour: from hundreds of metres up
 ## the camera sees ground the terrain has not built yet (it builds round the game camera, and the far
@@ -295,18 +406,17 @@ func _build_logo() -> void:
 	_logo.mesh = LOGO_MESH
 	_logo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_logo)
-	var mid: Vector3 = _pod_at(T_BOOM - 0.6)
-	var at: Vector3 = mid - _n * 45.0 + Vector3.UP * 8.0
-	var cam: Vector3 = _logo_cam()
-	var face: Vector3 = (cam - at)
-	face.y = 0.0
-	face = face.normalized()
-	_logo.global_transform = Transform3D(Basis(Vector3.UP.cross(face).normalized(), Vector3.UP, face) \
-			.scaled(Vector3.ONE * LOGO_SCALE), at)
-	_logo.visible = false
-
-func _logo_cam() -> Vector3:
-	return _pod_at(T_BOOM - 0.6) + _n * 55.0 + Vector3.DOWN * 4.0
+	# behind the blast as the braked camera sees it, facing that camera: the capsule comes at the
+	# camera past the sign's edge, and nearer than the sign wherever their pictures overlap
+	var hb: Vector3 = _chase(T_BOOM)
+	var view: Basis = Basis.looking_at(_p_end - hb, Vector3.UP)
+	var at: Vector3 = _p_end + (_p_end - hb).normalized() * LOGO_BACK + view.y * LOGO_LIFT
+	var face: Vector3 = (hb - at).normalized()
+	var x: Vector3 = Vector3.UP.cross(face).normalized()
+	_logo.global_transform = Transform3D(Basis(x, face.cross(x), face).scaled(Vector3.ONE * LOGO_SCALE), at)
+	_sign_aim = _p_end.lerp(at, 0.4)
+	_cam_end = _s - _f * END_BACK - _n * END_SIDE
+	_cam_end.y = maxf(_s.y + END_UP, G.ground_y(_cam_end, _s.y) + 6.0)
 
 func _build_smoke() -> void:
 	var q := QuadMesh.new()
@@ -379,6 +489,7 @@ func _process(delta: float) -> void:
 		_tick_pod(delta)
 		_tick_hitter()
 		_tick_debris(delta)
+		_tick_sound()
 		if is_instance_valid(_skip_lbl):
 			_skip_lbl.modulate.a = clampf((_t - 1.5) * 2.0, 0.0, 0.55) * (1.0 - clampf((_t - (T_END - 1.5)) * 2.0, 0.0, 1.0))
 		_place_camera(delta)
@@ -550,14 +661,24 @@ func _chunk(n: int, size: float) -> Node3D:
 	root.add_child(glow)
 	return root
 
-## Where piece `i` is at time t: down at a steady speed, its sideways drift dying off as the cube of
-## what is left, so the last part of every fall - the smoke column - is near vertical.
+## Where piece `i` is at time t: down, gathering speed (it leaves the blast at FALL_EASE of its mean),
+## its sideways drift eased in and out, so the camera can follow it off the blast and the last part
+## of every fall - the smoke column - is near vertical. With no such piece (it was never made), the
+## main piece's path from the blast to the start point, so the camera has something to follow.
 func _debris_at(i: int, t: float) -> Vector3:
-	if i >= _debris.size():
-		return _s + Vector3.UP * 60.0
-	var d: Dictionary = _debris[i]
-	var k: float = clampf((t - T_BOOM) / (float(d["t1"]) - T_BOOM), 0.0, 1.0)
-	return (d["to"] as Vector3) + Vector3.UP * (float(d["h"]) * (1.0 - k) + 0.6) + (d["hor"] as Vector3) * pow(1.0 - k, 3.0)
+	var to: Vector3 = _s
+	var h: float = _p_end.y - _s.y
+	var hor := Vector3(_p_end.x - _s.x, 0.0, _p_end.z - _s.z)
+	var t1: float = float(T_LAND[mini(i, T_LAND.size() - 1)])
+	if i < _debris.size():
+		var d: Dictionary = _debris[i]
+		to = d["to"]
+		h = d["h"]
+		hor = d["hor"]
+		t1 = d["t1"]
+	var k: float = clampf((t - T_BOOM) / (t1 - T_BOOM), 0.0, 1.0)
+	return to + Vector3.UP * (h * (1.0 - k * (FALL_EASE + (1.0 - FALL_EASE) * k)) + 0.6) \
+			+ hor * (1.0 - smoothstep(0.0, 1.0, k))
 
 func _tick_debris(delta: float) -> void:
 	for d in _debris:
@@ -660,48 +781,47 @@ func _look(from: Vector3, at: Vector3) -> Transform3D:
 	var up: Vector3 = Vector3.UP if absf(dir.normalized().dot(Vector3.UP)) < 0.97 else _f
 	return Transform3D(Basis.looking_at(dir, up), from)
 
+## How far ahead of the capsule along its line: the chase's lead, the race ahead, minus the braking
+## (the integral of a smoothstep from full speed down to HOLD_SPEED, in closed form, so the camera
+## slows without a jolt and any moment of it can be asked for).
+func _lead(t: float) -> float:
+	var span: float = T_BRAKED - T_BRAKE
+	var x: float = clampf((t - T_BRAKE) / span, 0.0, 1.0)
+	var braked: float = span * (x * x * x - x * x * x * x * 0.5) + maxf(t - T_BRAKED, 0.0)
+	return lerpf(LEAD.x, LEAD.y, smoothstep(4.0, 9.0, t)) \
+			+ (RUN_LEAD - LEAD.y) * smoothstep(T_RUN, T_RUN_END, t) - (SPEED - HOLD_SPEED) * braked
+
+## The camera before the blast (and the path it keeps drifting on after): ahead of the capsule on its
+## line, off the line by SIDE, swung round it by SWING - from the side, over the top (never under: from
+## below the capsule the camera would look straight up), to the other side.
+func _chase(t: float) -> Vector3:
+	var a: float = lerpf(SWING.x, SWING.y, smoothstep(0.0, T_SWING, t))
+	var up: Vector3 = _n.cross(_d).normalized()
+	var r: float = lerpf(SIDE.x, SIDE.y, smoothstep(T_RUN, T_BRAKED, t))
+	return _pod_at(t) + _d * _lead(t) + (_n * cos(a) + up * sin(a)) * r
+
+func _aim_before(t: float) -> Vector3:
+	return (_pod_at(t) - _d).lerp(_sign_aim, LEAN * smoothstep(T_RUN, T_BOOM, t))
+
 func _shot(t: float) -> Transform3D:
-	var pod: Vector3 = _pod_at(minf(t, T_BOOM))
-	if t < T_STAGE2:
-		var a: float = t * 0.08
-		var side: Vector3 = (_n * cos(a) + _f * sin(a)).normalized()
-		return _look(pod + _d * 15.0 + side * 8.0 + Vector3.UP * 1.0, pod + _d * -1.0)
-	if t < T_CHASE:
-		return _look(pod + _d * 12.0 - _n * 8.5 + Vector3.UP * 2.5, pod)
-	if t < T_PASS:
-		var a2: float = (t - T_CHASE) * 0.12
-		var side2: Vector3 = (_n * cos(a2) - _f * sin(a2)).normalized()
-		return _look(pod + _d * 19.0 + side2 * 6.0 - Vector3.UP * 1.0, pod - _d * 1.5)
-	if t < T_LOGO:
-		# it passes closest just before the cut: after that the camera would look down on it, at the
-		# ground the far terrain has not built yet
-		var fixed: Vector3 = _pod_at(T_LOGO - 0.1) + _n * 11.0 + _f * 3.0 + Vector3.DOWN * 4.0
-		return _look(fixed, pod)
-	if t < T_GROUND:
-		if is_instance_valid(_logo):
-			_logo.visible = true
-		var c: Vector3 = _logo_cam()
-		var drift: float = (t - T_LOGO) * 1.2
-		return _look(c - _n * drift, _pod_at(T_BOOM - 0.6) + Vector3.DOWN * 7.0)
-	if is_instance_valid(_logo) and _logo.visible:
-		_logo.queue_free()
-	# far enough back to see the pieces high up as the shot opens, tilting down with the main one
-	var cam_e: Vector3 = _s - _f * 50.0 + _n * 45.0
-	cam_e.y = maxf(_s.y + 16.0, G.ground_y(cam_e, _s.y) + 6.0)
-	# the camera follows the main piece down out of the smoke cloud, and settles on the start point
-	var target: Vector3 = _s + Vector3.UP * 2.0
-	if t < float(T_LAND[MAIN]):
-		var fall: Vector3 = _debris_at(MAIN, t)
-		target = fall.lerp(target, smoothstep(float(T_LAND[MAIN]) - 0.9, float(T_LAND[MAIN]), t))
-	var e: Transform3D = _look(cam_e, target)
-	if t < T_HANDOVER:
-		_cam_e = e
-		return e
-	if not is_instance_valid(_game_cam):
+	var c: Vector3 = _chase(t)
+	var aim: Vector3 = _aim_before(minf(t, T_BOOM))
+	if t > T_BOOM:
+		# down with the main piece onto the meadow, standing still before it lands
+		var land: float = float(T_LAND[MAIN])
+		var y: float = lerpf(c.y, _cam_end.y, smoothstep(T_BOOM + T_DROP, land - T_SETTLE, t))
+		c = c.lerp(_cam_end, smoothstep(T_BOOM + T_DESCENT, land - T_SETTLE, t))
+		c.y = y
+		aim = aim.lerp(_debris_at(MAIN, t), smoothstep(T_BOOM, T_BOOM + 0.9, t))
+		aim = aim.lerp(_s + Vector3.UP * 2.0, smoothstep(land - 0.9, land, t))
+		if t >= land and is_instance_valid(_logo):
+			_logo.queue_free()
+	c.y = maxf(c.y, G.ground_y(c, c.y - 100.0) + 5.0)
+	var e: Transform3D = _look(c, aim)
+	if t < T_HANDOVER or not is_instance_valid(_game_cam):
 		return e
 	_give_kit()
-	var h: float = smoothstep(T_HANDOVER, T_END, t)
-	return e.interpolate_with(_game_cam.global_transform, h)
+	return e.interpolate_with(_game_cam.global_transform, smoothstep(T_HANDOVER, T_END, t))
 
 # ── smoke ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -790,6 +910,7 @@ func _tick_smoke() -> void:
 
 func _skip() -> void:
 	Dialogue.clear()
+	_stop_sound()
 	if is_instance_valid(_pod):
 		_pod.queue_free()
 	if is_instance_valid(_hitter):
@@ -818,6 +939,9 @@ func _finish() -> void:
 		return
 	_done = true
 	_running = false
+	remove_from_group("planetfall_intro")
+	_hold_ground(false)
+	_hold_music(false)
 	if is_instance_valid(_game_cam):
 		_game_cam.current = true
 	if is_instance_valid(_cam):
@@ -834,6 +958,8 @@ func _finish() -> void:
 
 func _exit_tree() -> void:
 	_show_ui()
+	_hold_ground(false)
+	_hold_music(false)
 	# a scene change mid-intro must not leave the cabin hidden in a world that outlives us
 	if is_instance_valid(_machine) and _machine.has_meta("intro_hidden"):
 		_machine.remove_meta("intro_hidden")
