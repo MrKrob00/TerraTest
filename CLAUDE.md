@@ -1589,6 +1589,15 @@ project: read it before claiming how anything works.
   long, and a metre-sized threshold would rebuild the whole way round. The price is that an LOD
   boundary lags by those 16 m, which is ordinary hysteresis and not a hole: the ground is there,
   the seam is stitched, and collision runs its own queue along the body's corridor.
+- **WHILE A HOLD IS UP THE GROUND IS TAKEN ROUND IT, NOT ROUND THE CAMERA** (`ChunkTerrain.hold_at` /
+  `release_hold`, raised by the planetfall intro on the start point; the player: holes where the
+  machine lands). The intro flies its camera from a kilometre up at 62 m/s looking mostly at the sky,
+  and a leaf set round that camera rebuilt itself every 16 m, built fine ground under it nobody saw
+  and let the start point's ground go coarse. With a hold the leaves are those a camera standing at
+  the hold would want (drawn only where the real camera looks), a leaf within `HOLD_RADIUS` of it is
+  wanted off the frame too and never let go (`_near_player`), and the build queue runs nearest the
+  hold first. Measured on the optimize=none build through the intro: the mesh queue 175 -> 395 before,
+  157 -> 0 by the sign after, and the intro's frame rate there 9 -> 13 fps.
 - THE FIRST RING IS BUILT AT THE START POINT: the camera in a new world, and in a LOADED one the
   primary machine's saved position, read straight out of the save (`G.saved_start_point`). The
   machine returns to its place only AFTER the terrain is ready — `world_persist` waits for it — so
@@ -1684,13 +1693,23 @@ project: read it before claiming how anything works.
 - **THE GROUND'S DETAIL IS ONE TEXTURE OF FOUR MASKS, IN THE ONE FETCH THE OLD TILE SPENT**
   (`art/ground_detail.py` -> `addons/LiteTerrain/ground_detail.png`, set by
   `TerrainBiomes.apply_to_material`; the player's call, after TerraTech's ground): R cracked earth
-  (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B grass
-  clumps, A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
+  (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B painted
+  grass (below), A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
   ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
   `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
   MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
   drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
   geometry baked into chunks; a note here used to say there was.
+- **THE MEADOW IS PAINTED** (the player's reference, a hand-painted forest floor - "the style, not the
+  place": no paths or clearings, a first cut drew them and was turned down). B is BRUSH DABS round a
+  neutral 0.5 (`ground_detail.grass`: leaf-shaped strokes in three sizes, each leaning to the tone of
+  an irregular clump field and pushed clearly lighter or darker; the clumps came from a few sines
+  first and read as stripes once the 9 m tile repeated, so they are blurred white noise now), and the
+  shader turns a dab into a HUE, not a shade (`stroke_dark` cool blue-green, `stroke_light` warm
+  yellow-green, `grass_detail` 1.0); over the meadow a ~25 m vertex noise moves the tone between cool
+  shade and warm sun, so the tile never reads as a tile; the greens are brighter (`color_grass`
+  0.36/0.60/0.21, `grass_shade` 0.80, were 0.33/0.56/0.23 and 0.62). Same one fetch, a vertex noise
+  more: checked on the real driver against the old meadow from three views.
 - **THE SALT FLATS ARE THE FIFTH BIOME** (TerraTech's dried lake bed, the player's first screenshot):
   `TerrainBiomes.salt_mask` - only on the desert, never under mountains. The land eases down to a bed
   made of the SAME base noise read at a twentieth of its frequency (`terrain_gen.raw_height_at`), so
@@ -2040,7 +2059,12 @@ project: read it before claiming how anything works.
   Such a base carries meta `quest_id` and that tag is saved with the machine (`world_persist`), or
   every load would stand a second base next to the first — the arc's own state is memory only.
 - THE TUTORIAL IS BUILDING THE MACHINE AND NOTHING ELSE (four steps: BUILD, take a part, attach it,
-  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone), and THE
+  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone). THE
+  GAME TAKES THE BUILD STEP ITSELF (the player's call: the tutorial opens in assembly): once the
+  machine stands in the world - the planetfall intro over (group `planetfall_intro`), `intro_hidden`
+  gone, `G.world_ready` - `tutorial_director` calls the machine's own `_on_building_pressed`, the door
+  the BUILD button's action reaches, which reports the step; the HUD follows the machine's state and
+  opens the build tab. Measured: after the intro the machine is building and `tut_mode_build` done. And THE
   SCOUT IS THE FIRST STORY QUEST (`story_first_blood`). Non-obvious gestures are a Mechanic line at
   the end. THE SCOUT HAS ITS OWN BUILD (`blocks.STORY_SCOUT`, 126: a cabin, one block, four small
   wheels, one machine gun - the player's call; a roll of the bottom step brought a shotgun and a gun
@@ -2070,6 +2094,68 @@ project: read it before claiming how anything works.
   `ZONE_PRESS` 0.55 - 0.5 takes a blade's lift to exactly zero): a patch over the lifted meadow had
   to be pulled 0.3 m toward the camera and darkened every block on it, and a blade through it is a
   tuft growing out of the coals. Checked on the real driver: no grass through it, the cracks lit.
+- **A NEW WORLD OPENS ON THE PLANETFALL** (`planetfall.gd`, the player's call after TerraTech's
+  opening; models `art/intro_models.py` -> `resources/intro/`): the drop capsule falls burning out of
+  the sky with System lines, a burnt piece of something clips it, it passes the WORLDTECH sign and
+  blows up in front of it, three burning pieces fall trailing smoke onto the meadow, the last ONTO THE
+  START POINT - and THAT LANDING lays the smouldering ground, glitches the cabin in and hands out the
+  kit; then the camera glides into the game camera. Raised by `world_persist._fresh_start` (a new
+  world only, not the proving ground; the debug switch `intro` on Main skips it), which awaits its
+  `finished`. It starts when the loading screen begins to dissolve. A DOUBLE TAP SKIPS IT (`SKIP_DOUBLE`;
+  a single tap did, and a stray touch took the intro away - the player's report), counted once a
+  finger (the emulated mouse and touch carry `DEVICE_ID_EMULATION` and are not counted), and skipping
+  lays the same start. Nothing in it is physics: the capsule, the sign and the debris are pictures on the
+  intro's own camera, and the cabin stands hidden and frozen on its start point the whole time (meta
+  `intro_hidden`, which `world_persist`'s cull pass honours, or it would show the cabin again the next
+  frame). EVERY UI LAYER OF THE SCENE IS HIDDEN, NOT ONLY THE HUD (the player: "the quests stayed
+  up") - the tracker, the compass and the FPS counter are canvas layers of their own, swept again
+  every `UI_SWEEP`; Dialogue, an autoload, keeps the lines. The intro's camera carries its own copy
+  of the environment whose SKY'S LOWER HALF IS THE HAZE (`_intro_env`, the colour from
+  `DayCycle.haze_now` - the engine refuses `global_shader_parameter_get` outside the editor): from
+  hundreds of metres up the camera sees ground not built yet, and the game's dark lower half (a hole
+  must not read as sky) read there as black holes; as haze they read as horizon. NO PARTICLES: smoke
+  is one MultiMesh of pixel cards (`smoke_card.gdshader`), fire and sparks BlockFX glitch cards, the
+  speed streaks crossed strips; the cabin glitches in by `blast_cards`, NOT `BlockFX.materialise`,
+  which sizes its cards by every child of `blocks` and on the player's cabin drew 20 m panels over the
+  screen. THE CAPSULE is TerraTech's pod by its proportions in our colours: a square blue cap with a
+  white band between red lines and a vent field on its back, a PYRAMID of eight flat faces down to a
+  CYLINDER, a blunt scorched nose - the first cut, an egg on a neck, was turned down for what it
+  looked like. THE SIGN is "WORLD" over badge + "TECH" in a grid font on a blue slab, the bevels and
+  the letters' shadow painted; the badge's cube is seen FROM ABOVE - its edges run from the middle to
+  the upper-left, upper-right and bottom corners, where its shading splits (drawn to the other three
+  they cut the faces in half and the player read the middle as sunk). Measured on the real driver through the whole run and through a skip:
+  the cabin shown and unfrozen, one crash site, the HUD and the tracker back, the game camera current.
+  **ONE CAMERA MOVE, NO CUTS, THE CAPSULE NEVER OUT OF FRAME** (the player: the cut to the sign came
+  seconds before the capsule, and cuts read as teleports): the camera rides the capsule's line ahead of
+  it looking back, swings round the line from one side OVER THE TOP to the other (never under: from
+  below it looks straight up and `_look`'s up vector flips), races ahead (`RUN_LEAD`), brakes
+  (`_lead` integrates the smoothstep in closed form, so any moment can be asked for), and the capsule
+  comes at it past the sign, which is placed FROM the braked camera (`LOGO_BACK` behind the blast,
+  `LOGO_LIFT` up in its picture) so the capsule is nearer than the sign wherever their pictures overlap
+  - it passes beside the sign and blows up in front of it. Then the camera comes down to the meadow
+  with the main piece, its height dropping only from `T_DROP` so it looks down on the falling piece
+  rather than up into the sky, and stands still `T_SETTLE` before the piece lands. Tuned on a model of
+  the path and checked on the real driver: the capsule on screen in every frame, the sign in frame
+  ~2.7 s. THE START POINT'S GROUND IS HELD (`ChunkTerrain.hold_at`, under Terrain) while the camera is
+  in the sky. THE FIRST HIT USED TO HITCH: the smoke cards' shader and the burnt blocks' material
+  compiled in that frame (CLAUDE.md "A SHADER IS COMPILED THE FIRST TIME"), so `_warm` draws a puff at
+  zero opacity and a speck of burnt block inside the capsule in the first frames.
+  **THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS** (the player's design; `Music.set_held`, not the
+  player's `enabled` switch): wind round the capsule from the start (a loop, louder and higher as it
+  falls), a quiet "piu-piu" alarm loop from the hit, both cut at the blast; the blast; and the main
+  piece falling - a descending whistle and a rising rush ending in a thud timed to its landing
+  (`art/intro_sounds.py` `FALL_HIT` = `T_LAND[MAIN] - T_BOOM`). Synthesised by `art/intro_sounds.py`
+  into `resources/intro/intro_*.wav` (22 kHz mono; the loops carry a WAV `smpl` chunk, which the
+  importer's "Detect From WAV" reads - measured, both come in as forward loops), loaded at run time
+  so a sound not yet imported is silence, never a script that fails to load; a skip stops them.
+  THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"):
+  `world_persist._play_intro` gives it `INTRO_WAIT` to start and `INTRO_RUN` to finish, and on a
+  script that does not load, or past either, takes it down, makes the game camera current and lays
+  the crash site and the kit itself. AND NOTHING IS SAVED BEFORE `world_ready` (`_save_world`): a
+  pause, a close or the back key mid-intro wrote the new world's bare cabin, and every later load came
+  back to it with no intro, no kit and no site. Measured on a clean checkout through the menu's own
+  way in (the loading overlay): the whole run, a pause at 3 s (no save written, the start laid on
+  landing), a stall at 3 s (the start laid after `INTRO_RUN`), and no script (laid at once, 8 blocks).
 
 ### The proving ground
 
@@ -2915,21 +3001,19 @@ project: read it before claiming how anything works.
   before this change as after - not a regression.
 - **WHAT THE GROUND'S FRAGMENT DOES PER PIXEL IS WHAT HAS TO BE**: the zone colour, the rock fade, the
   snow crust's tone (`v_base_col`, folded in per vertex now) and the ripple and crack strengths (folded
-  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the colour noise, the detail fetch
-  and the plane it is taken on, the shadow fetch and the lighting. On llvmpipe the ground's shader
+  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the detail fetch, the shadow fetch and
+  the lighting. On llvmpipe the ground's shader
   costs ~34 ms of a 107 ms ground-only frame against a plain material (1920x1080, alternated), the
   detail block ~7-13 of it and the shadow ~5, and moving the shadow's window test to the vertices
   showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
   one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
   phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
-- **THE GROUND'S PIXEL COST HAS THREE TEST SWITCHES** (garage SETTINGS, `Main.ground_opts` ->
-  `ChunkTerrain.ground_opts`, ALL OFF BY DEFAULT - off is the ground as drawn; the player's call after the
-  probe put the detail block at ~7 ms): no per-pixel colour hash (`NO_COLOR_NOISE`), the detail only out
-  to 80 m and faded before it instead of to the solid haze (`DETAIL_NEAR`), the detail on the ground's
-  plane everywhere so canyon walls streak (`ONE_PLANE`). DEFINES, NOT UNIFORMS: each combination is a
-  variant of the same code built once (`_variants`, with or without `FAST_GROUND`), every uniform
-  carried across - a uniform branch would still cost the fill. Checked on the real driver: every
-  variant compiles, lit and fast, and draws the same ground but for the detail (mean 1-2.6/255).
+- **THE GROUND'S DETAIL IS CUT THREE WAYS, FOR GOOD** (`glsl.gdshader`; the player's call after the
+  probe put the detail block at ~7 ms, tried first as garage switches and kept on, the switches gone):
+  no per-pixel colour hash (`color_variation` and its cell are gone), the detail only out to
+  `DETAIL_FAR` (80 m, faded over `DETAIL_FADE`) where it ran to the solid haze, and the detail on the
+  ground's own plane everywhere (canyon walls and cliffs streak; picking one of three planes a pixel
+  went with it). The probe's "ground no detail" row cuts `if (v_det > 0.0)`.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own

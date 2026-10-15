@@ -117,6 +117,24 @@ func set_enabled(on: bool) -> void:
 		track_changed.emit("", "")
 	prefs_changed.emit()
 
+## A CUTSCENE HOLDS THE MUSIC (the planetfall intro plays its own sound - the player's call). Not
+## `enabled`: that is the player's switch and is saved. Held, the track fades out and nothing starts;
+## released, the context plays again, from where it was cut if it was cut.
+var _held: bool = false
+
+func set_held(on: bool) -> void:
+	if _held == on:
+		return
+	_held = on
+	if on:
+		_save_resume(_ctx)
+		_gap_left = 0.0
+		_cur = {}
+		_fade_out_all()
+		track_changed.emit("", "")
+	else:
+		_play_for_context()
+
 func skip() -> void:
 	_start_track(_pick(_ctx), true)
 
@@ -238,7 +256,7 @@ func _pick(ctx: int) -> Dictionary:
 
 func _start_track(t: Dictionary, crossfade: bool, from_pos: float = 0.0) -> void:
 	_gap_left = 0.0
-	if t.is_empty() or not enabled:
+	if t.is_empty() or not enabled or _held:
 		_fade_out_all()
 		_cur = {}
 		return

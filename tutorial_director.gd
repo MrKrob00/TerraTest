@@ -337,12 +337,18 @@ func _say_final_hints() -> void:
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
-			# An open garage hides ALL the driving controls, the mode button included, and the step
-			# was left with nothing to point at: lead out of the garage first.
-			if _garage_open():
-				_aim_node(_garage_node("close"), "Close the garage first")
-			else:
-				_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button names where it takes you")
+			# THE GAME TAKES THIS STEP ITSELF (the player's call: the tutorial opens in assembly).
+			# Once the machine stands in the world - the planetfall intro over - it enters assembly
+			# through the machine's own door, the one the BUILD button's action reaches, which
+			# reports the step; the HUD follows the machine's state and opens the build tab.
+			var vb: Node = _vehicle()
+			if vb == null or vb.has_meta("intro_hidden") or not G.world_ready() \
+					or get_tree().get_first_node_in_group("planetfall_intro") != null:
+				return
+			if "Building" in vb and vb.Building:
+				Q.report("mode_building", 1)
+			elif vb.has_method("_on_building_pressed"):
+				vb._on_building_pressed()
 		"tut_take_world":
 			# Рука уже занята (блок взяли раньше, чем шаг стал текущим) — засчитываем сразу.
 			# Иначе тупик: поставить нельзя (цель — блок на земле), взять нечем.
@@ -452,7 +458,8 @@ func _quest_tracker() -> Control:
 func _vehicle() -> Node:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
 	if cc != null and "current_vehicle" in cc:
-		return cc.current_vehicle
+		var v = cc.current_vehicle          # untyped: it can be freed under us (CLAUDE.md rule 4)
+		return v if is_instance_valid(v) else null
 	return null
 
 func _vehicle_point() -> Vector3:

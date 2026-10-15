@@ -26,7 +26,7 @@ extends Resource
 ## Noise contrast stretched before the threshold: higher packs the patches and hardens edges.
 @export_range(0.5, 4.0, 0.1) var biome_contrast: float = 1.8
 @export var color_sand: Color = Color(0.87, 0.74, 0.49)
-@export var color_grass: Color = Color(0.33, 0.56, 0.23)
+@export var color_grass: Color = Color(0.36, 0.60, 0.21)
 ## Dune ridge wavelength, m. (Their height follows the world's Height, terrain_gen._gen_dune_amp.)
 @export_range(5.0, 200.0, 1.0) var dune_wavelength: float = 34.0
 ## How far to flatten hills in the desert: 0 is a table, 1 is as hilly as the meadow.
@@ -118,7 +118,7 @@ func snow_blend_at(world_height: float) -> float:
 @export_range(0.0, 0.5, 0.01) var sand_grass: float = 0.1
 ## Below 0.65 the grass is slightly darker than the ground — a soft shadow at the root
 ## rather than a bright patch.
-@export_range(0.4, 1.2, 0.01) var grass_shade: float = 0.62
+@export_range(0.4, 1.2, 0.01) var grass_shade: float = 0.80
 
 ## РАЗМЕР ПЯТНА БИОМА РЕШАЕТ `scale`, И ТОЛЬКО ОН. Маска — это одна октава шума и порог, минимума
 ## размера в ней нет: рядом с порогом всегда рождаются обрезки в два-три чанка, и именно они
