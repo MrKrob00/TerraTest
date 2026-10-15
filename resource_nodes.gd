@@ -264,23 +264,22 @@ func _apply_ore_colors() -> void:
 ## off the RECORDS, not the drawn instances. The drawn ones are only those within `render_distance` and
 ## ahead of the camera (`_process`), so a tree 50 m behind the camera threw nothing onto the ground in
 ## front of it, and the far shadow cascades reach past `render_distance` altogether.
-## `shadow_records` hands over the records round a point (by region, `_records_round`); the map walks
-## them a slice a frame and asks `cast_entry` of each in its window. An entry is [0, foot, crown
-## height, crown radius, key] for a tree - the crown read off its model's box and scaled as the
-## instance is - and [1, transform in the world, the model's outline at its break level, key] for an
-## ore vein; false for a felled tree or an emptied vein (`_cast_state`). IT IS KEPT ON THE RECORD
+## `shadow_groups` hands over the records round a point, by region; the map walks them a slice a frame
+## and asks `cast_entry` of each. An entry is [0, foot, crown height, crown radius, key] for a tree -
+## the crown read off its model's box and scaled as the instance is - and [1, transform in the world,
+## the model's outline at its break level, key] for an ore vein; false for a felled tree or an emptied vein (`_cast_state`). IT IS KEPT ON THE RECORD
 ## (`sc`) until the caster changes (`_bump_cast` drops it): made fresh it was most of the cost of a
 ## build, a walk over two thousand records in one frame for the far window. The KEY names the caster
 ## and its state, so the map keeps the polygons of everything that did not change.
 ## THE OUTLINE, NOT THE BOX: the model's box was a dark rectangle round every vein - the rock's low
 ## base reaches far wider than the ore. It is the model's extreme vertices in the 26 directions of a
 ## cube's faces, edges and corners, among the parts still standing (the shader's rule: a part stands
-## while the share is over its UV.x, rubble always), once per model and break level.
+## while the share is over its UV.x, rubble always), once per model and break level, laid out as the
+## triangles of a closed surface through them (`_grid_surface`): the map casts each triangle and the
+## union of their shadows is the outline's, with no hull to take per vein and per light.
 var _crown_of: Dictionary = {}
-var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5
-func shadow_records(center: Vector2, half: float) -> Array:
-	return _records_round(center, half)
-
+var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5:
+                                     # the outline's surface as triangles in model space
 ## The same records BY REGION, each with its revision: [[region key, rev, records], ...], the proving
 ## ground's own veins last under `MADE_RK`. A region whose rev has not moved casts what it cast, so the
 ## shadow map keeps its triangles whole and a move costs only the regions that came in.
@@ -342,20 +341,6 @@ func _cast_state(v: Dictionary) -> int:
 		return -1
 	return clampi(int(ceil(g * 5.0 - 0.001)), 0, 5)
 
-## The records round a point, by REGION: a region is a list of its own records (`_regions`), so a
-## window asks the few regions it overlaps instead of walking every record of the 5 x 5 kept round the
-## player. A replanted or nudged record can stand up to `REPLANT_RADIUS` outside its region's square.
-func _records_round(center: Vector2, half: float) -> Array:
-	var out: Array = []
-	var r: float = half + REPLANT_RADIUS
-	for rz in range(floori((center.y - r) / REGION), floori((center.y + r) / REGION) + 1):
-		for rx in range(floori((center.x - r) / REGION), floori((center.x + r) / REGION) + 1):
-			var recs = _regions.get(Vector2i(rx, rz))
-			if recs != null:
-				out.append_array(recs)
-	out.append_array(_made)
-	return out
-
 ## WHAT TELLS THE SHADOW MAP THAT A CASTER CHANGED, PER REGION (`sun_shadows.gd` builds a still layer
 ## again on it): a vein's cast state (`write_custom`, `_stream_in`), a tree moved (`replant`, the nudge
 ## off a machine), a region come or gone, a vein made or cleared on the proving ground. Per region so a
@@ -378,7 +363,7 @@ func _tag_region(rk: Vector2i, recs: Array) -> void:
 		v["rk"] = rk
 	_region_rev[rk] = int(_region_rev.get(rk, 0)) + 1
 
-## A number that changes whenever a caster round `center` does (the regions `_records_round` asks).
+## A number that changes whenever a caster round `center` does (the regions `shadow_groups` hands over).
 func shadow_rev_in(center: Vector2, half: float) -> int:
 	var sum: int = _made_rev
 	var r: float = half + REPLANT_RADIUS
@@ -401,17 +386,19 @@ func _outline_levels(mesh: Mesh) -> Array:
 		for i in vs.size():
 			verts.append(vs[i])
 			brk.append((uv as PackedVector2Array)[i].x if uv is PackedVector2Array and i < uv.size() else -1.0)
-	var dirs: Array[Vector3] = []
+	var cells: Array[Vector3i] = []
 	for x in [-1, 0, 1]:
 		for y in [-1, 0, 1]:
 			for z in [-1, 0, 1]:
 				if x != 0 or y != 0 or z != 0:
-					dirs.append(Vector3(x, y, z).normalized())
+					cells.append(Vector3i(x, y, z))
+	var tris := _grid_surface(cells)
 	var levels: Array = []
 	for k in 6:
 		var share: float = float(k) / 5.0
 		var pts := PackedVector3Array()
-		for d in dirs:
+		for cell in cells:
+			var d := Vector3(cell).normalized()
 			var best := -INF
 			var bp := Vector3.ZERO
 			for i in verts.size():
@@ -421,11 +408,40 @@ func _outline_levels(mesh: Mesh) -> Array:
 				if t > best:
 					best = t
 					bp = verts[i]
-			if best > -INF and not pts.has(bp):
-				pts.append(bp)
-		levels.append(pts)
+			pts.append(bp)
+		var out := PackedVector3Array()
+		out.resize(tris.size())
+		for i in tris.size():
+			out[i] = pts[tris[i]]
+		levels.append(out)
 	_outline_of[mesh] = levels
 	return levels
+
+## The outer cells of a 3x3x3 grid as a surface, the floor left out (it faces away from any sun):
+## indices into `cells`. The extreme vertex of a vein in each cell's direction stands on that cell. A
+## square's four corners rarely lie in one plane, and one diagonal cut into the outline's hull - up to
+## 5.7% of a titanite's shadow at a low sun - so each square is ALL FOUR triangles of its corners, whose
+## shadow is their hull: the union is the outline's shadow or a hair inside it, never outside.
+static func _grid_surface(cells: Array[Vector3i]) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for ax in 3:
+		for side in [-1, 1]:
+			if ax == 1 and side == -1:
+				continue
+			var u: int = (ax + 1) % 3
+			var w: int = (ax + 2) % 3
+			for a in [-1, 0]:
+				for b in [-1, 0]:
+					var quad: Array[int] = []
+					for corner in [Vector2i(a, b), Vector2i(a + 1, b), Vector2i(a + 1, b + 1), Vector2i(a, b + 1)]:
+						var c := Vector3i.ZERO
+						c[ax] = side
+						c[u] = corner.x
+						c[w] = corner.y
+						quad.append(cells.find(c))
+					out.append_array([quad[0], quad[1], quad[2], quad[0], quad[2], quad[3],
+							quad[0], quad[1], quad[3], quad[1], quad[2], quad[3]])
+	return out
 
 ## A vein node's shader data (its HP and hit times, resource_node._write_shader_data): into its own
 ## model's slot, and kept on the record so the data moves with the vein when its slot does. A node
