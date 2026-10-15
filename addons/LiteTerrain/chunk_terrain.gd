@@ -2306,6 +2306,12 @@ func known_height(wx: float, wz: float) -> float:
 			return (global_transform * Vector3(p.x, h, p.z)).y
 	return NAN
 
+## A number that moves whenever a node is built or dropped or the leaf set changes (`_cover_ep`): the
+## sun shadow asks it before reading again the heights it had none for, so ground that cannot have
+## changed is not asked twice.
+func built_epoch() -> int:
+	return _cover_ep
+
 ## A ROW OF `known_height`, written into `out` from index `at`: `count` points from (x0, z) every `step`
 ## along world X, `none` where no height is held. One call and one inverse for the row, and the node
 ## looked up once per level-0 chunk - which node answers depends on that chunk alone - where a call a
