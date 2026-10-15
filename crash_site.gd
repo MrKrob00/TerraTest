@@ -1,7 +1,8 @@
 extends Node3D
 ## WHERE THE PLAYER FIRST WAKES IN A NEW WORLD (the player's call: burnt cubes round them and the
-## ground in that radius like weakly glowing embers, no capsule). Raised once by
-## world_persist._fresh_start after the machine is seated on its start point; a picture, nothing to
+## ground in that radius like weakly glowing embers, no capsule - the capsule blew up in the sky, see
+## planetfall.gd). Raised once, when the planetfall intro's last piece of debris lands on the start
+## point (or world_persist._fresh_start with the intro off); a picture, nothing to
 ## pick up and no collider (wheels read only the terrain's heights). Not saved: a reload of the world
 ## comes back without it, and it has done its job by then.
 ##

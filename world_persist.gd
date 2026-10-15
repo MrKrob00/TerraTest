@@ -303,10 +303,11 @@ func _vehicle_render_tick() -> void:
 		if not (v is Node3D):
 			continue
 		var n := v as Node3D
-		# A SLEEPER AND A MACHINE HELD FOR ITS DROP RING STAY HIDDEN: the spawner hid them
+		# A SLEEPER, A MACHINE HELD FOR ITS DROP RING AND THE CABIN THE PLANETFALL INTRO HAS NOT
+		# LANDED YET STAY HIDDEN: the spawner (or planetfall.gd) hid them
 		# (enemy_spawner._sleep, _hold_for_drop) and this pass used to show them again the next frame
 		# they stood in the frustum - a held one hung in the air over its ring.
-		if bool(n.get_meta("asleep", false)) or n.has_meta("drop_pending"):
+		if bool(n.get_meta("asleep", false)) or n.has_meta("drop_pending") or n.has_meta("intro_hidden"):
 			_set_vehicle_visible(n, false)
 			continue
 		# NEVER hide your own active machine. The camera hangs on it and looks at it, so it passes the test
@@ -647,11 +648,18 @@ func _fresh_start() -> void:
 	await _to_start_point(primary)
 	if not is_instance_valid(primary):
 		return
+	var site_root: Node = get_node_or_null("/root/Main")
+	# A NEW WORLD OPENS ON THE PLANETFALL (planetfall.gd, the player's call after TerraTech): the
+	# capsule falls burning, the last piece of it lands on the start point, and that is where the
+	# smouldering ground, the cabin and the kit appear - the intro lays them itself, on landing or on
+	# a tap that skips it. The debug switch `intro` (Main -> World) skips it outright.
+	if not G.proving_ground and site_root != null and G.debug(&"intro", true):
+		var intro: Node = load("res://planetfall.gd").make(site_root, (primary as Node3D).global_position, primary)
+		await intro.finished
+		return
 	# Where the player wakes: burnt cubes on smouldering ground (crash_site.gd). A new world only.
-	if not G.proving_ground:
-		var site_root: Node = get_node_or_null("/root/Main")
-		if site_root != null:
-			load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
+	if not G.proving_ground and site_root != null:
+		load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	primary.award_block_list(G.STARTER_KIT)
 

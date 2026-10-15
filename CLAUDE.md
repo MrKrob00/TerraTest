@@ -2070,6 +2070,33 @@ project: read it before claiming how anything works.
   `ZONE_PRESS` 0.55 - 0.5 takes a blade's lift to exactly zero): a patch over the lifted meadow had
   to be pulled 0.3 m toward the camera and darkened every block on it, and a blade through it is a
   tuft growing out of the coals. Checked on the real driver: no grass through it, the cracks lit.
+- **A NEW WORLD OPENS ON THE PLANETFALL** (`planetfall.gd`, the player's call after TerraTech's
+  opening; models `art/intro_models.py` -> `resources/intro/`): the drop capsule falls burning out of
+  the sky with System lines, a burnt piece of something clips it, it passes the WORLDTECH sign and
+  blows up in front of it, three burning pieces fall trailing smoke onto the meadow, the last ONTO THE
+  START POINT - and THAT LANDING lays the smouldering ground, glitches the cabin in and hands out the
+  kit; then the camera glides into the game camera. Raised by `world_persist._fresh_start` (a new
+  world only, not the proving ground; the debug switch `intro` on Main skips it), which awaits its
+  `finished`. It starts when the loading screen begins to dissolve. A TAP SKIPS IT, and skipping lays
+  the same start. Nothing in it is physics: the capsule, the sign and the debris are pictures on the
+  intro's own camera, and the cabin stands hidden and frozen on its start point the whole time (meta
+  `intro_hidden`, which `world_persist`'s cull pass honours, or it would show the cabin again the next
+  frame). EVERY UI LAYER OF THE SCENE IS HIDDEN, NOT ONLY THE HUD (the player: "the quests stayed
+  up") - the tracker, the compass and the FPS counter are canvas layers of their own, swept again
+  every `UI_SWEEP`; Dialogue, an autoload, keeps the lines. The intro's camera carries its own copy
+  of the environment whose SKY'S LOWER HALF IS THE HAZE (`_intro_env`, the colour from
+  `DayCycle.haze_now` - the engine refuses `global_shader_parameter_get` outside the editor): from
+  hundreds of metres up the camera sees ground not built yet, and the game's dark lower half (a hole
+  must not read as sky) read there as black holes; as haze they read as horizon. NO PARTICLES: smoke
+  is one MultiMesh of pixel cards (`smoke_card.gdshader`), fire and sparks BlockFX glitch cards, the
+  speed streaks crossed strips; the cabin glitches in by `blast_cards`, NOT `BlockFX.materialise`,
+  which sizes its cards by every child of `blocks` and on the player's cabin drew 20 m panels over the
+  screen. THE CAPSULE is TerraTech's pod by its proportions in our colours: a square blue cap with a
+  white band between red lines and a vent field on its back, a PYRAMID of eight flat faces down to a
+  CYLINDER, a blunt scorched nose - the first cut, an egg on a neck, was turned down for what it
+  looked like. THE SIGN is "WORLD" over badge + "TECH" in a grid font on a blue slab, the bevels and
+  the letters' shadow painted. Measured on the real driver through the whole run and through a skip:
+  the cabin shown and unfrozen, one crash site, the HUD and the tracker back, the game camera current.
 
 ### The proving ground
 

@@ -132,6 +132,8 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 @export_subgroup("Мир")
 ## Обучение на новом сейве. Снято — игрок сразу в мире, а первый враг приходит общим потоком.
 @export var tutorial: bool = true
+## The planetfall intro on a new world (planetfall.gd): the capsule falls, the start is laid on landing.
+@export var intro: bool = true
 ## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
 @export var profiler_on_start: bool = false
 
