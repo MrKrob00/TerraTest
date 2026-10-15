@@ -2972,7 +2972,7 @@ project: read it before claiming how anything works.
   makes a refresh of its own only when the terrain built or dropped something since they were asked
   (`ChunkTerrain.built_epoch`) - every 4 s it re-marched every map for the same picture, and without
   it a camera parked with the day still (the proving ground) never saw ground that landed after the
-  bursts (asked everywhere and on every refresh, behind the camera too where nothing is built, they
+  bursts - measured alternately, it costs 0-10% of the node's frame (asked everywhere and on every refresh, behind the camera too where nothing is built, they
   were most of what a drive fetched) - and a rolling `TERR_REFRESH` band
   of the WINDOW's rows and columns (whole grid rows were 4-5 times the cells, for heights only the
   march reaches). THE GROUND UNDER AN EDIT IS ASKED AGAIN (`ChunkTerrain.ground_changed`, emitted by
