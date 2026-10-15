@@ -50,6 +50,9 @@ const BLOCK_SHADE_NIGHT := 0.78
 const MOON_COLOR := Color(0.62, 0.72, 1.0)
 
 var phase := 0.0
+## The haze written last (planetfall.gd paints its sky's lower half with it): the engine refuses to
+## read a global shader parameter back outside the editor.
+var haze_now := Color(0.75, 0.72, 0.66)
 var _light: DirectionalLight3D = null
 var _env: Environment = null
 var _sky: ShaderMaterial = null
@@ -147,6 +150,7 @@ func _apply() -> void:
 	if _light != null:
 		_light.shadow_blur = SHADOW_BLUR
 	var haze := haze_day.lerp(haze_dusk, dusk * (1.0 - n)).lerp(haze_night, n)
+	haze_now = haze
 	RenderingServer.global_shader_parameter_set(&"world_haze", haze)
 	# the blocks' sun (block_lit.gdshader): the light's own direction and tint, by night the moon's;
 	# `a` is the shade floor - a face turned away keeps that much of its painted colour

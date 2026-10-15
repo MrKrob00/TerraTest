@@ -177,10 +177,10 @@ colours, snow, rock, sand grass, canyon bands, grass density/height/shade and th
 (`TerrainBiomes.apply_to_material`) and the game the grass fade, the trample and the corruption map:
 tune those in the biomes, everything else on the material.
 
-- **Texture**: `tile_world_size` (the colour noise's cell), `ground_detail`,
+- **Texture**: `ground_detail`,
   `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`.
 - **Colours / terrain / biomes**: `color_*`, `snow_line`, `snow_blend`, `rock_threshold`,
-  `rock_blend`, `color_variation`, `sand_grass`, `canyon_band_h`, `crack_strength`.
+  `rock_blend`, `sand_grass`, `canyon_band_h`, `crack_strength`.
 - **Grass**: `grass_density`, `grass_height`, `grass_shade`, `grass_fade` (set by the node).
 - **Trample**: `trample_map`, `trample_center`, `trample_size` (driven by the game's `grass.gd`).
 - **Corruption**: `corrupt_amount`, `corrupt_map`, `corrupt_world_center`, `corrupt_world_size`,

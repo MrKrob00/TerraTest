@@ -5,7 +5,7 @@ CLAUDE.md, Look and light). After TerraTech's ground (the player's screenshots):
 
   R  CRACKED EARTH - Voronoi cells, 0 in the cracks, a tone per cell inside (the salt flats)
   G  SAND RIPPLES - wind ripples, sharp crest and long back, wavering (the desert)
-  B  GRASS - clumps and tufts, darker hollows (the meadow)
+  B  PAINTED GRASS - brush dabs, dark and light, round a neutral 0.5 (the meadow, and the dirt's edge)
   A  PATCHES - a low, broad variation every biome is tinted by, so no ground is one flat colour
 
     python3 art/ground_detail.py  ->  addons/LiteTerrain/ground_detail.png
@@ -68,12 +68,50 @@ def ripples():
     return np.where(t < 0.78, t / 0.78, (1 - t) / 0.22) ** 1.4
 
 
-# B: grass clumps - broad tufts and fine speckle.
+# B: PAINTED GRASS (the player's reference: a hand-painted meadow) - brush DABS laid one over another
+# on a mid tone, each a leaf-shaped stroke at its own angle in a dark or a light tone, a little lighter
+# along one side the way a loaded brush leaves paint. 0.5 is the neutral tone: the shader turns below
+# it into a cool dark green and above it into a warm yellow-green, and the dirt's edge reads the same
+# strokes, so a path's rim is broken by them instead of drawn by a ruler.
+def smooth_periodic(sigma_px, seed):
+    """White noise blurred in the frequency domain: smooth, irregular, and periodic over the tile."""
+    r = np.random.default_rng(seed).random((N, N))
+    f = np.fft.fftfreq(N)
+    k = np.exp(-2 * (math.pi * sigma_px) ** 2 * (f[:, None] ** 2 + f[None, :] ** 2))
+    return norm(np.real(np.fft.ifft2(np.fft.fft2(r) * k)))
+
+
 def grass():
-    broad = norm(periodic_noise([(5, 3), (3, 7), (8, 6), (11, 4), (6, 12)], [1, 0.9, 0.6, 0.5, 0.4]))
-    fine = rng.random((N // 4, N // 4))
-    fine = np.kron(fine, np.ones((4, 4)))                # 4-px speckle: the game's pixel scale
-    return np.clip(0.55 * broad + 0.45 * fine, 0, 1)
+    # the clumps: an irregular field (a few sines read as stripes once the tile repeats)
+    field = smooth_periodic(22, 5)
+    out = 0.5 + (field - 0.5) * 0.5
+    rs = np.random.default_rng(77)
+    # (count, length px, width px, tone spread): big strokes first, the fine ones over them
+    layers = [(420, (26, 48), (8, 15), 0.16), (900, (14, 26), (5, 9), 0.18), (1400, (7, 13), (3, 5), 0.20)]
+    for count, (l0, l1), (w0, w1), jit in layers:
+        for _ in range(count):
+            cx, cy = rs.random() * N, rs.random() * N
+            L, W = rs.uniform(l0, l1), rs.uniform(w0, w1)
+            ang = rs.uniform(0, math.pi)
+            ca, sa = math.cos(ang), math.sin(ang)
+            r = int(L + 2)
+            ix = (np.arange(int(cx) - r, int(cx) + r + 1)) % N
+            iy = (np.arange(int(cy) - r, int(cy) + r + 1)) % N
+            gx, gy = np.meshgrid(np.arange(-r, r + 1) + (int(cx) - cx), np.arange(-r, r + 1) + (int(cy) - cy))
+            u = (gx * ca + gy * sa) / L
+            v = (-gx * sa + gy * ca) / W
+            # a leaf: full width in the middle, pointed at both ends
+            taper = np.clip(1.0 - u * u, 0.0, 1.0)
+            inside = (np.abs(v) <= taper) & (np.abs(u) <= 1.0)
+            # a dab leans to the tone of the clump it lies in and is pushed clearly lighter or
+            # darker than it, so the strokes show and the clumps still read
+            f = field[int(cy) % N, int(cx) % N]
+            side = 1.0 if rs.random() < 0.35 + 0.3 * f else -1.0
+            tone = 0.5 + (f - 0.5) * 0.6 + side * rs.uniform(0.08, jit + 0.08)
+            tone = tone + 0.05 * np.clip(v, -1, 1)
+            sub = out[np.ix_(iy, ix)]
+            out[np.ix_(iy, ix)] = np.where(inside, tone, sub)
+    return np.clip(out, 0, 1)
 
 
 # A: broad patches, a couple of blotches across the tile.

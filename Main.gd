@@ -56,8 +56,6 @@ const HAZE_DEFAULT := Vector4(150.0, 750.0, 0.85, 0.0)
 var view_distance: float = VIEW_DEFAULT
 ## Far ground merged into one mesh per cluster (ChunkTerrain HLOD). A setting so the phone can A/B it.
 var hlod_on: bool = true
-## The ground's pixel-cost test switches (ChunkTerrain.ground_opts bits), all off by default.
-var ground_opts: int = 0
 const SOFT_SHADOW_SIZE := 1024
 const HARD_SHADOW_SIZE := 512
 
@@ -134,6 +132,8 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 @export_subgroup("Мир")
 ## Обучение на новом сейве. Снято — игрок сразу в мире, а первый враг приходит общим потоком.
 @export var tutorial: bool = true
+## The planetfall intro on a new world (planetfall.gd): the capsule falls, the start is laid on landing.
+@export var intro: bool = true
 ## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
 @export var profiler_on_start: bool = false
 
@@ -278,11 +278,6 @@ func _apply_shadows() -> void:
 				(mm as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
 						if soft else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-func set_ground_opt(bit: int, on: bool) -> void:
-	ground_opts = (ground_opts | bit) if on else (ground_opts & ~bit)
-	_apply_view()
-	_save_settings()
-
 func set_hlod(on: bool) -> void:
 	hlod_on = on
 	_apply_view()
@@ -299,8 +294,6 @@ func _apply_view() -> void:
 		map.view_distance = view_distance
 	if map != null and "hlod_enabled" in map:
 		map.hlod_enabled = hlod_on
-	if map != null and "ground_opts" in map:
-		map.ground_opts = ground_opts
 	# the haze scales with the view: past the default it reaches out with it, under the default it
 	# closes in so the ground still ends inside it
 	var k: float = view_distance / VIEW_DEFAULT
@@ -365,7 +358,6 @@ func _save_settings() -> void:
 		"shadows_engine": shadows_engine,
 		"view_distance": view_distance,
 		"hlod_on": hlod_on,
-		"ground_opts": ground_opts,
 		"ui_scale": ui_scale,
 		"fullscreen": fullscreen,
 	})
@@ -382,7 +374,6 @@ func _load_settings() -> void:
 		shadows_engine = bool(parsed.get("shadows_engine", false))
 		view_distance = clampf(float(parsed.get("view_distance", view_distance)), VIEW_MIN, VIEW_MAX)
 		hlod_on = bool(parsed.get("hlod_on", true))
-		ground_opts = int(parsed.get("ground_opts", 0))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 

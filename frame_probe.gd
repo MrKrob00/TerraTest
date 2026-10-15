@@ -207,8 +207,8 @@ func _ground_cases(map: Node3D, out: Array) -> void:
 			out.append(["ground no shadow", _swap(map, _variant(mat, code.replace(line, line + ", shadows_disabled")))])
 			out.append(["ground unshaded", _swap(map, _variant(mat, code.replace(line, "render_mode unshaded")))])
 		# the fragment's own work (noise, the detail fetch) against the vertex work it rides on
-		if code.find("if (v_haze < HAZE_FLAT) {") >= 0:
-			out.append(["ground no detail", _swap(map, _variant(mat, code.replace("if (v_haze < HAZE_FLAT) {", "if (false) {")))])
+		if code.find("if (v_det > 0.0) {") >= 0:
+			out.append(["ground no detail", _swap(map, _variant(mat, code.replace("if (v_det > 0.0) {", "if (false) {")))])
 		var plain := StandardMaterial3D.new()
 		plain.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		plain.albedo_color = Color(0.45, 0.5, 0.35)
