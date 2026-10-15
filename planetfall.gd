@@ -1,7 +1,7 @@
 extends Node3D
 ## THE PLANETFALL INTRO (the player's call, after TerraTech's opening): a NEW world opens on the drop
 ## capsule falling burning out of the sky. Played once by world_persist._fresh_start, after the loading
-## screen starts to dissolve; a tap skips it. Nothing here is saved and nothing here is physics: the
+## screen starts to dissolve; a double tap skips it. Nothing here is saved and nothing here is physics: the
 ## capsule, the WORLDTECH sign and the debris are pictures on our own camera, and the world they fall
 ## into is the real one - the player's cabin stands hidden on its start point (meta `intro_hidden`,
 ## which world_persist's culling pass honours) until the last piece of debris lands on it.
@@ -43,6 +43,10 @@ const MAIN := 1
 const T_HANDOVER := 20.8
 const T_END := 23.0
 const SKIP_AFTER := 0.8       # a tap before this is the one that closed the loading screen
+## A DOUBLE TAP SKIPS, NOT A TAP (the player: one stray touch three seconds in took the whole intro
+## away): the second release within this of the first, as the game's own double tap
+## (vehicle_body_3d.DOUBLE_TAP_MS).
+const SKIP_DOUBLE := 0.45
 
 const SPEED := 62.0           # the capsule's speed along its line, m/s
 const DIVE := 1.9             # how steep the line falls: vertical per horizontal
@@ -79,6 +83,7 @@ var _machine: Node3D = null
 var _game_cam: Camera3D = null
 var _hidden_ui: Array = []      # the world's UI layers this intro hid (untyped: rule 4)
 var _ui_t: float = 0.0
+var _tap_ms: int = -100000      # the last tap's release, for the double tap that skips
 var _cam: Camera3D
 var _pod: Node3D                # oriented along the flight, never rolled
 var _pod_mesh: MeshInstance3D   # rolls inside it
@@ -327,7 +332,7 @@ func _build_skip_hint() -> void:
 	layer.layer = 95
 	add_child(layer)
 	_skip_lbl = Label.new()
-	_skip_lbl.text = tr("Tap to skip")
+	_skip_lbl.text = tr("Double tap to skip")
 	_skip_lbl.add_theme_font_size_override("font_size", 15)
 	_skip_lbl.modulate = Color(1, 1, 1, 0.0)
 	_skip_lbl.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -398,8 +403,15 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseButton \
 			or event is InputEventMouseMotion:
 		get_viewport().set_input_as_handled()
-	if tap_end and _t > SKIP_AFTER:
+	# one finger is one tap: the mouse emulated from a touch (and a touch from the mouse) carries the
+	# emulation device and is not counted again, or a single tap would read as a double
+	if not tap_end or event.device == InputEvent.DEVICE_ID_EMULATION or _t <= SKIP_AFTER:
+		return
+	var now: int = Time.get_ticks_msec()
+	if now - _tap_ms <= int(SKIP_DOUBLE * 1000.0):
 		_skip()
+	else:
+		_tap_ms = now
 
 # ── the capsule ─────────────────────────────────────────────────────────────────────────────────
 
