@@ -18,7 +18,7 @@ extends RefCounted
 #   метка    выпуклая четырёхлучевая звезда по центру КАЖДОЙ грани, лучи по диагоналям
 #   нормали  плоские (по грани)
 #   тексель  16 пикселей на мировую единицу — совпадает с землёй
-#            (PIXELS_PER_TILE = 16.0 в addons/LiteTerrain/glsl.gdshader)
+#            (the ground's colour noise used 16 cells a tile; it is gone)
 
 const CELL: int = 16             # тексель-ячейка грани
 const ATLAS: int = 32            # атлас 2x2 ячейки
