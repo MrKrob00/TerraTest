@@ -481,10 +481,13 @@ def build_logo(pk, img):
         if t is not None:
             return t
         x, y = hx0 + (px + 0.5) / LOGO_DENS - bcx, hy1 - (py + 0.5) / LOGO_DENS - bcy
-        # the cube's three faces meet at the middle: top above both lower edges, left and right below
+        # the cube's three faces meet at the middle, seen from above: the top face reaches the
+        # upper-left and upper-right corners, the vertical edge runs down to the bottom one - the
+        # same three corners the shading below splits at (the player: with the edges drawn to the
+        # other three corners the cube read as seen from below, its middle sunk)
         line = 0.035
         a = math.degrees(math.atan2(y, x)) % 360
-        for ed in (90.0, 210.0, 330.0):
+        for ed in (30.0, 150.0, 270.0):
             dirx, diry = math.cos(math.radians(ed)), math.sin(math.radians(ed))
             along = x * dirx + y * diry
             if along > 0 and abs(-x * diry + y * dirx) < line:
