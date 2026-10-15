@@ -2877,21 +2877,19 @@ project: read it before claiming how anything works.
   before this change as after - not a regression.
 - **WHAT THE GROUND'S FRAGMENT DOES PER PIXEL IS WHAT HAS TO BE**: the zone colour, the rock fade, the
   snow crust's tone (`v_base_col`, folded in per vertex now) and the ripple and crack strengths (folded
-  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the colour noise, the detail fetch
-  and the plane it is taken on, the shadow fetch and the lighting. On llvmpipe the ground's shader
+  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the detail fetch, the shadow fetch and
+  the lighting. On llvmpipe the ground's shader
   costs ~34 ms of a 107 ms ground-only frame against a plain material (1920x1080, alternated), the
   detail block ~7-13 of it and the shadow ~5, and moving the shadow's window test to the vertices
   showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
   one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
   phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
-- **THE GROUND'S PIXEL COST HAS THREE TEST SWITCHES** (garage SETTINGS, `Main.ground_opts` ->
-  `ChunkTerrain.ground_opts`, ALL OFF BY DEFAULT - off is the ground as drawn; the player's call after the
-  probe put the detail block at ~7 ms): no per-pixel colour hash (`NO_COLOR_NOISE`), the detail only out
-  to 80 m and faded before it instead of to the solid haze (`DETAIL_NEAR`), the detail on the ground's
-  plane everywhere so canyon walls streak (`ONE_PLANE`). DEFINES, NOT UNIFORMS: each combination is a
-  variant of the same code built once (`_variants`, with or without `FAST_GROUND`), every uniform
-  carried across - a uniform branch would still cost the fill. Checked on the real driver: every
-  variant compiles, lit and fast, and draws the same ground but for the detail (mean 1-2.6/255).
+- **THE GROUND'S DETAIL IS CUT THREE WAYS, FOR GOOD** (`glsl.gdshader`; the player's call after the
+  probe put the detail block at ~7 ms, tried first as garage switches and kept on, the switches gone):
+  no per-pixel colour hash (`color_variation` and its cell are gone), the detail only out to
+  `DETAIL_FAR` (80 m, faded over `DETAIL_FADE`) where it ran to the solid haze, and the detail on the
+  ground's own plane everywhere (canyon walls and cliffs streak; picking one of three planes a pixel
+  went with it). The probe's "ground no detail" row cuts `if (v_det > 0.0)`.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own

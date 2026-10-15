@@ -2173,20 +2173,8 @@ var fast_ground: bool = false:
 			return
 		fast_ground = v
 		_apply_fast_ground()
-## THE PLAYER'S TEST SWITCHES FOR THE GROUND'S PIXEL COST (garage SETTINGS, `Main.ground_opts`, all
-## off by default): OPT_NO_NOISE, OPT_DETAIL_NEAR, OPT_ONE_PLANE - defines in glsl.gdshader, so each
-## combination is its own variant of the same code (`_variants`, built once), never a uniform branch.
-const OPT_NO_NOISE := 1
-const OPT_DETAIL_NEAR := 2
-const OPT_ONE_PLANE := 4
-var ground_opts: int = 0:
-	set(v):
-		if v == ground_opts:
-			return
-		ground_opts = v
-		_apply_fast_ground()
 var _lit_shader: Shader = null
-var _variants: Dictionary = {}       # (fast, opts) -> Shader
+var _fast_shader: Shader = null
 
 func _apply_fast_ground() -> void:
 	var sm := _mat as ShaderMaterial
@@ -2195,23 +2183,13 @@ func _apply_fast_ground() -> void:
 	if _lit_shader == null:
 		_lit_shader = sm.shader
 	var to: Shader = _lit_shader
-	var vk: int = (1 if fast_ground else 0) | (ground_opts << 1)
-	if vk != 0:
-		to = _variants.get(vk)
-		if to == null:
-			var defs := ""
-			if ground_opts & OPT_NO_NOISE:
-				defs += "\n#define NO_COLOR_NOISE"
-			if ground_opts & OPT_DETAIL_NEAR:
-				defs += "\n#define DETAIL_NEAR"
-			if ground_opts & OPT_ONE_PLANE:
-				defs += "\n#define ONE_PLANE"
-			var mode := "render_mode unshaded;\n#define FAST_GROUND" if fast_ground \
-					else "render_mode diffuse_lambert, specular_disabled;"
-			to = Shader.new()
-			to.code = _lit_shader.code.replace(
-					"render_mode diffuse_lambert, specular_disabled;", mode + defs)
-			_variants[vk] = to
+	if fast_ground:
+		if _fast_shader == null:
+			_fast_shader = Shader.new()
+			_fast_shader.code = _lit_shader.code.replace(
+					"render_mode diffuse_lambert, specular_disabled;",
+					"render_mode unshaded;\n#define FAST_GROUND")
+		to = _fast_shader
 	if sm.shader == to:
 		return
 	var keep := {}
@@ -2227,8 +2205,8 @@ func _setup_materials(base: Material) -> void:
 		(_mat as ShaderMaterial).set_shader_parameter("grass_fade", grass_fade())
 		_push_biomes()
 		_lit_shader = null
-		_variants.clear()
-		if fast_ground or ground_opts != 0:
+		_fast_shader = null
+		if fast_ground:
 			_apply_fast_ground()
 	else:
 		_mat = base
