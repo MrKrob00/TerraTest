@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://bn4ijdq6777j8"]
 
-[ext_resource type="Texture2D" path="res://objects/intro_logo_texture.png" id="1_k4cpi"]
+[ext_resource type="Texture2D" uid="uid://d0q2r1hw10age" path="res://objects/intro_logo_texture.png" id="1_k4cpi"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2o823"]
 resource_name = "intro_logo"
