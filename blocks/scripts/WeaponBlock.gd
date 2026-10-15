@@ -1,7 +1,7 @@
 extends VehicleBlock
 class_name WeaponBlock
 
-@export var damage: int = 26
+@export var damage: int = 13
 ## What kind of damage this weapon deals (VehicleBlock.Dmg, the wiki's table in VehicleBlock): a
 ## subclass sets it in `_init` so a scene (the heavy cannons) can still override the export.
 @export var damage_kind: int = VehicleBlock.Dmg.BULLET
@@ -259,8 +259,9 @@ func _idle_ok() -> bool:
 const TURRET_TRACK: float = 30.0       # how fast the model catches the pivot (smoothing only: the pivot sets the rate)
 const AIM_TOL: float = 4.0             # deg off the solution the barrel may fire at
 ## deg/s the turret traverses and elevates (`_turn_to`). A subclass sets its own in `_init`, so a
-## scene (Marlit's, on the same scripts) can still override it as an export.
-@export var turn_speed: float = 120.0
+## scene (Marlit's, on the same scripts) can still override it as an export. THE PLAYER'S SCALE
+## (~20 deg/s, "as an example"): at the first numbers, 45-120, a turn read as no turn at all.
+@export var turn_speed: float = 30.0
 var _aim_err: float = 0.0              # deg between the barrel and its solution, last tick
 
 var _yaw_part: Node3D = null           # поворотная часть: влево-вправо

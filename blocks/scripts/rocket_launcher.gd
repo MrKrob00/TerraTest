@@ -11,12 +11,12 @@ class_name RocketLauncher
 ## клеток поперёк, и целиться ракетой было незачем — она и так забирала всё вокруг.
 @export var aoe_radius: float = 1.5
 ## Урон в эпицентре (к краю радиуса спадает до ~15%).
-@export var aoe_damage: int = 231
+@export var aoe_damage: int = 116
 
 func _init() -> void:
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	homing_deg = 25.0        # TerraTech's rockets home in part (BulletSim._steer)
-	turn_speed = 70.0        # deg/s (WeaponBlock._turn_to): a full pod
+	turn_speed = 18.0        # deg/s (WeaponBlock._turn_to): a full pod
 
 func _ready() -> void:
 	super._ready()

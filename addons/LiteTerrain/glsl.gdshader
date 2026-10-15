@@ -25,12 +25,30 @@ uniform float detail_world_size : hint_range(1.0, 40.0)  = 9.0;
 uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
 uniform float grass_detail      : hint_range(0.0, 1.0)   = 1.0;
 uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
-// THE PAINTED MEADOW (the player's reference: a hand-painted forest floor). The detail's B channel is
-// brush dabs round a neutral 0.5 (art/ground_detail.py): below it the grass turns toward stroke_dark,
-// above toward stroke_light - a shift of HUE, cool dark green against warm yellow-green, not only of
-// shade. The STYLE only, the player's word: no paths or clearings were asked for, and none are drawn.
-uniform vec3  stroke_dark  : source_color = vec3(0.62, 0.80, 0.84);
+// THE PAINTED GROUND (the player's reference: a hand-painted forest floor, first on the meadow, then
+// "the other biomes too"). The detail's B channel is brush dabs round a neutral 0.5
+// (art/ground_detail.py): below it the ground turns toward its biome's DARK tint, above toward its
+// LIGHT one - a shift of HUE, a cool shade against a warm light, not only of shade. The same pair, its
+// square root, tints a slow tone noise (~25 m) per vertex, so no tile reads as a tile. One pair a
+// biome, blended per vertex in the order the colours are (v_pd / v_pl): the fragment mixes two
+// varyings by the one fetch it already makes. The STYLE only, the player's word: no paths or
+// clearings were asked for, and none are drawn.
+uniform vec3  stroke_dark  : source_color = vec3(0.62, 0.80, 0.84);    // the meadow
 uniform vec3  stroke_light : source_color = vec3(1.30, 1.20, 0.74);
+uniform vec3  sand_dark    : source_color = vec3(0.93, 0.88, 0.84);    // warm ochre, deeper
+uniform vec3  sand_light   : source_color = vec3(1.07, 1.06, 1.08);    // pale, sun-bleached
+uniform vec3  salt_dark    : source_color = vec3(0.90, 0.90, 0.97);    // a cool grey-blue film
+uniform vec3  salt_light   : source_color = vec3(1.07, 1.05, 1.02);
+uniform vec3  canyon_dark  : source_color = vec3(0.84, 0.82, 0.94);    // dusty purple shade
+uniform vec3  canyon_light : source_color = vec3(1.12, 1.08, 0.98);    // sunlit orange
+uniform vec3  rock_dark    : source_color = vec3(0.76, 0.82, 0.96);    // blue-grey shade
+uniform vec3  rock_light   : source_color = vec3(1.18, 1.12, 1.00);    // warm grey
+uniform vec3  snow_dark    : source_color = vec3(0.88, 0.93, 1.03);    // blue snow shade
+uniform vec3  snow_light   : source_color = vec3(1.03, 1.02, 0.98);    // warm white
+// The rock is cut into facets by the same cells the salt flat cracks into (the detail's R channel),
+// lighter: a dark seam between plates and a tone a plate. On a cliff they run down the slope - the
+// detail lies on the ground's plane - and read as weathered streaks.
+uniform float rock_facets  : hint_range(0.0, 1.0)   = 0.55;
 
 group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // warm golden sand (desert)
@@ -47,7 +65,7 @@ uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
 // ever match the one map they were set for.
 uniform float snow_line  : hint_range(-100.0, 400.0) = 60.0;
 uniform float snow_blend : hint_range(1.0, 120.0)    = 25.0;
-uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // cold grey (contrasts with canyon rock)
+uniform vec4 color_rock  : source_color = vec4(0.50, 0.50, 0.54, 1.0);  // blue-grey (contrasts with canyon rock)
 
 group_uniforms Terrain;
 uniform float rock_threshold     : hint_range(0.0, 1.0)      = 0.7;
@@ -61,9 +79,10 @@ uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // stratum 
 // SALT FLATS: a dried lake bed, cracked into tiles (the ground detail's R channel). Its mask rides
 // in COLOR.r with the vertex's BORDER CODE (chunk_terrain EDGE_STEP / SALT_SPAN): r = code / 3 +
 // SALT_SPAN x salt, code 0 inside the node, 1 on a border running along x, 2 along z.
-uniform vec4  color_salt        : source_color = vec4(0.86, 0.75, 0.58, 1.0);
+uniform vec4  color_salt        : source_color = vec4(0.90, 0.84, 0.74, 1.0);
 uniform float crack_strength    : hint_range(0.0, 1.0)     = 0.65;
 const float SALT_SPAN = 0.3;
+const float SNOW_HOLD = 0.14;
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 1.0;   // share of meadow vertices lifted
@@ -130,17 +149,22 @@ const float SH_FADE = 1.0 / 6.0;
 #endif
 varying float v_haze;
 // THE DETAIL IS DRAWN ONLY OUT TO DETAIL_FAR, faded over DETAIL_FADE before it (it ran to the solid
-// haze), on the ground's own plane everywhere (canyon walls streak; three planes were a pick a
+// haze; 80 m first, doubled at the player's call once the ground was painted), on the ground's own plane everywhere (canyon walls streak; three planes were a pick a
 // pixel), and there is no per-pixel colour hash - the player's cuts after the phone's probe put the
 // detail block at ~7 ms, tried as switches and kept on.
-const float DETAIL_FAR = 80.0;
-const float DETAIL_FADE = 20.0;
+const float DETAIL_FAR = 160.0;
+const float DETAIL_FADE = 40.0;
 varying float v_det;
 
 varying vec3  v_base_col;
-varying float v_is_grass;
-varying float v_desert;       // bare sand: what the ripples are drawn on
-varying float v_salt;         // the salt flat: what the cracks are drawn on
+// THE DETAIL'S STRENGTHS, every one worked out per vertex with DETAIL_FAR's fade folded in, so the
+// fragment only multiplies: the dab tints (dark, light), the ripples a channel (bare sand, snow),
+// the cracks as 1 + x + y * R (the salt flat, the rock's facets), the patches.
+varying vec3  v_pd;
+varying vec3  v_pl;
+varying vec3  v_rip;
+varying vec2  v_crack;
+varying float v_patch;
 varying vec2  v_wpos;         // world x, z - the detail fetch and the shadow lookup
 
 float hash2D(vec2 p) {
@@ -225,11 +249,19 @@ void vertex() {
     float biome_grass = COLOR.b;
     float canyon  = COLOR.g;
     float mountain = COLOR.a;                                          // MOUNTAIN biome (snowy, high)
-    // Terracotta in BANDS by height (the canyon strata): a flat tread gets one colour band.
+    // THE STRATA ARE PAINTED: a band by height (a flat tread gets one), each a colour of a short
+    // palette round color_canyon - orange-red, deep red, a dusty purple-brown and, rarer, a salmon -
+    // and a shade of its own. One terracotta a little lighter or darker read as one red mass.
+    // hash2D is NOT used here: on whole numbers it clusters (a quarter of the bands came out over
+    // 0.9), and the rare pale band painted whole canyon floors sand-coloured.
     float band_id    = floor(wy / canyon_band_h);
-    float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 per band, stable
-    vec3  canyon_col = mix(color_canyon.rgb * 0.72,
-                           clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
+    float bh         = fract(sin(band_id * 91.7 + 7.3) * 43758.5453);   // 0..1 per band, stable
+    vec3  cc         = color_canyon.rgb;
+    vec3  canyon_col = bh < 0.40 ? cc * vec3(1.10, 1.12, 1.00)
+                     : bh < 0.72 ? cc * vec3(0.86, 0.80, 0.86)
+                     : bh < 0.90 ? cc * vec3(0.74, 0.86, 1.36)
+                     :             cc * vec3(1.12, 1.42, 1.55);
+    canyon_col      *= 0.90 + 0.18 * fract(sin(band_id * 47.3 + 2.1) * 43758.5453);
     // Colour channels are 8-bit: the code is read with a margin, the salt is what is left over.
     float edge    = floor(COLOR.r * 3.0 + 0.05);
     float salt    = clamp((COLOR.r - edge / 3.0) / SALT_SPAN, 0.0, 1.0);
@@ -238,31 +270,53 @@ void vertex() {
     zone          = mix(zone,           canyon_col,       canyon);      // canyon on top
     float snow    = mountain * smoothstep(snow_line - snow_blend, snow_line + snow_blend, wy);
     zone          = mix(zone,           color_snow.rgb,   snow);        // snow only up high
-    float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, wn.y);
-    vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // canyon cliffs are darker
+    // snow clings to steeper ground than bare earth (SNOW_HOLD): a far mountain's coarse normals
+    // otherwise read a whole flank as rock - a grey smudge over the snow
+    float rock_at = rock_threshold - SNOW_HOLD * snow;
+    float rock_t  = 1.0 - smoothstep(rock_at - rock_blend, rock_at + rock_blend, wn.y);
+    // a canyon cliff is its stratum in shade, so the bands run on up the walls (a flat dark brown
+    // hid them where they show best); over the snow line a cliff is the mountain's grey rock, or a
+    // canyon under a mountain put brown blots on its snow
+    float cliff_c = canyon * (1.0 - snow);
+    vec3  rock_col = mix(color_rock.rgb, canyon_col * vec3(0.70, 0.64, 0.74), cliff_c);
     v_base_col    = mix(zone, rock_col, rock_t);
 
-    // ТОН ЛУГА СЧИТАЕТСЯ ОТ БИОМА, А НЕ ОТ ТОГО, ПОДНЯЛАСЬ ЛИ ЭТА ВЕРШИНА.
-    //
-    // Раньше v_is_grass ставился только там, где вершину реально приподняли, а поднимают её лишь
-    // на ближнем уровне LOD и лишь по броску хеша. Значит умножение на grass_shade доставалось
-    // случайной части вершин: вблизи луг шёл пятнами двух тонов, а дальше первого уровня
-    // становился ровным третьим. Игрок это и увидел — «два цвета, а вдали будет ещё один».
-    //
-    // Долю травы знает КАЖДЫЙ уровень: она выводится из маски биома в COLOR.b и из уклона. Тон
-    // теперь берётся из неё, поэтому луг одного цвета на всей дистанции. Подъём вершин остаётся
-    // ниже и остаётся геометрией — он и должен быть виден только вблизи.
+    // the painted pair, assembled in the colours' own order
+    vec3 pd = mix(sand_dark,  mix(vec3(1.0), stroke_dark,  grass_detail), biome_grass);
+    vec3 pl = mix(sand_light, mix(vec3(1.0), stroke_light, grass_detail), biome_grass);
+    pd = mix(pd, salt_dark, salt);      pl = mix(pl, salt_light, salt);
+    pd = mix(pd, canyon_dark, canyon);  pl = mix(pl, canyon_light, canyon);
+    pd = mix(pd, snow_dark, snow);      pl = mix(pl, snow_light, snow);
+    pd = mix(pd, mix(rock_dark, canyon_dark, cliff_c), rock_t);
+    pl = mix(pl, mix(rock_light, canyon_light, cliff_c), rock_t);
+
+    // THE MEADOW'S TONE COMES FROM THE BIOME, NOT FROM WHETHER THIS VERTEX WAS LIFTED: only the near
+    // level lifts, and only by a hash's roll, so a tone by the lift gave the near meadow two tones
+    // in patches and the far one a third (the player: "two colours, and a third in the distance").
+    // Every level knows the masks and the slope; the lift below stays geometry, seen only near.
     float grass_amount = mix(sand_grass, 1.0, biome_grass)
             * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain) * (1.0 - salt);
-    v_is_grass = clamp(grass_amount, 0.0, 1.0);
-    // the painted meadow: a slow change of tone (~25 m) between a cool shade and a warm sunny green,
-    // so the dabs' 9 m tile never reads as a tile. Per vertex.
+    // the grass's colour share: the meadow's tone at the root (grass_shade) against the 0.78 of
+    // every other ground. Per vertex: it was a multiply a pixel.
+    float grass_col = clamp(biome_grass * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - salt) * (1.0 - snow), 0.0, 1.0);
+    v_base_col *= mix(0.78, grass_shade, grass_col);
+    // a slow change of tone (~25 m) between the biome's cool shade and its warm light - the dabs'
+    // pair, softened - so the 9 m tile never reads as a tile
     float tone = vnoise(world_pos.xz * 0.04 + vec2(5.0, 9.0));
-    v_base_col *= mix(vec3(1.0), mix(vec3(0.82, 0.92, 0.96), vec3(1.14, 1.10, 0.84), tone), v_is_grass);
-    // both carry their uniform's strength already: a multiply a vertex, not a pixel
-    v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0)
-            * ripple_strength;
-    v_salt = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
+    v_base_col *= sqrt(mix(pd, pl, tone));
+    v_pd = mix(vec3(1.0), pd, v_det);
+    v_pl = mix(vec3(1.0), pl, v_det);
+    // RIPPLES on bare sand and, softer, on snow (wind-blown): a tint, not a shade - on sand the crest
+    // pale and the trough a deeper ochre, on snow the trough blue
+    float bare = (1.0 - canyon) * (1.0 - rock_t) * (1.0 - salt);
+    float sand_w = clamp((1.0 - biome_grass) * (1.0 - snow) * bare, 0.0, 1.0);
+    float snow_w = clamp(snow * (1.0 - rock_t), 0.0, 1.0);
+    v_rip = (sand_w * vec3(0.24, 0.30, 0.40) + snow_w * vec3(0.22, 0.16, 0.06)) * ripple_strength * v_det;
+    // CRACKS: the salt flat's deep ones, the rock's light facets (mix(lo, 1.08, R) each, as 1 + x + y R)
+    float salt_w = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
+    float rock_w = rock_t * mix(1.0, 0.5, cliff_c) * rock_facets;
+    v_crack = (salt_w * vec2(0.35 - 1.0, 1.08 - 0.35) + rock_w * vec2(0.62 - 1.0, 1.08 - 0.62)) * v_det;
+    v_patch = 2.0 * patch_strength * v_det;
     // THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL, so two nodes meeting on a seam
     // lift their shared vertices alike whatever their levels and whenever each was built. It used to
     // be the near level only, with the border rows flagged flat where the neighbour was coarser -
@@ -300,22 +354,16 @@ void vertex() {
 void fragment() {
     vec3 base_col = v_base_col;
 
-    // The detail masks, one fetch on the ground's plane (DETAIL_FAR above).
+    // The detail masks, one fetch on the ground's plane (DETAIL_FAR above); every strength comes
+    // from the vertex with the fade in it.
     if (v_det > 0.0) {
         vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
-        float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
-        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert);
-        // the lake bed: a tone per tile, dark in the cracks
-        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
-        k = mix(1.0, k, v_det);
-        // the painted grass: each dab shifts the hue, dark ones cool, light ones warm
-        vec3 tint = mix(stroke_dark, stroke_light, dt.b);
-        base_col = clamp(base_col * k * mix(vec3(1.0), tint, v_is_grass * grass_detail * v_det), 0.0, 1.0);
+        float k = (1.0 + (dt.a - 0.5) * v_patch) * (1.0 + v_crack.x + v_crack.y * dt.r);
+        // each dab shifts the hue: dark ones toward the biome's cool shade, light ones its warm light
+        base_col = clamp(base_col * k * (vec3(1.0) + v_rip * (dt.g - 0.53)) * mix(v_pd, v_pl, dt.b), 0.0, 1.0);
     }
 
-    // Below grass_shade 0.65 the grass sits slightly darker than the ground — a soft shadow at
-    // the root rather than a bright patch.
-    ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
+    ALBEDO    = base_col;
 #ifdef FAST_GROUND
     float shade = 0.0;
     if (sun_shadow_strength > 0.0 && v_shsel.w > 0.0) {

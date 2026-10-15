@@ -97,14 +97,17 @@ const SMOKE_CAP := 1024
 const STREAKS := 28
 
 ## THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS (the player's call; Music.set_held): wind round the
-## capsule from the start, a quiet repeating alarm from the hit, both until the blast, the blast, and
-## the main piece falling, ending in its thud as it lands. Synthesised by art/intro_sounds.py; loaded
+## capsule from the start, the blow when the burnt piece strikes it, a quiet repeating alarm from
+## then, both until the blast, the blast, and the main piece falling, ending in its thud as it lands. Synthesised by art/intro_sounds.py; loaded
 ## at run time, so a sound not imported yet is silence, never a script that fails to load.
 const SND := "res://resources/intro/intro_%s.wav"
 const WIND_DB := -7.0
 const ALARM_DB := -15.0
 const BOOM_DB := -1.0
 const FALL_DB := -4.0
+const HIT_DB := -3.0
+## the hit's file opens with the piece's whoosh: the blow sits this far in (art/intro_sounds.py HIT_PRE)
+const HIT_PRE := 0.3
 const T_ALARM := T_HIT + 0.35
 
 var _t: float = 0.0
@@ -207,7 +210,7 @@ func _hold_music(on: bool) -> void:
 		m.set_held(on)
 
 func _build_sound() -> void:
-	for which in ["wind", "alarm", "boom", "fall"]:
+	for which in ["wind", "alarm", "hit", "boom", "fall"]:
 		var path: String = SND % which
 		var st: AudioStream = load(path) if ResourceLoader.exists(path) else null
 		if st == null:
@@ -235,6 +238,9 @@ func _tick_sound() -> void:
 		# in with the dissolving loading screen, a little faster and louder as the fall goes on
 		wind.volume_db = lerpf(-40.0, WIND_DB, smoothstep(0.0, 1.6, _t)) + (2.0 if _t >= T_HIT else 0.0)
 		wind.pitch_scale = lerpf(0.9, 1.12, clampf(_t / T_BOOM, 0.0, 1.0))
+	if _t >= T_HIT - HIT_PRE and _t < T_BOOM and not has_meta("snd_hit"):
+		set_meta("snd_hit", true)
+		_play("hit", HIT_DB)
 	var alarm: AudioStreamPlayer = _snd.get("alarm")
 	if alarm != null and not alarm.playing and _t >= T_ALARM and _t < T_BOOM:
 		_play("alarm", ALARM_DB)

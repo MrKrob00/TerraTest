@@ -43,7 +43,7 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var salt_threshold: float = 0.70
 ## Wider than the other edges: the flattening rides on it, and a narrow edge is a cliff.
 @export_range(0.02, 0.5, 0.01) var salt_edge: float = 0.08
-@export var color_salt: Color = Color(0.86, 0.75, 0.58)
+@export var color_salt: Color = Color(0.90, 0.84, 0.74)
 
 # ── CANYON ────────────────────────────────────────────────────────────────────
 @export_group("Canyon")
@@ -98,7 +98,7 @@ func snow_line_at(world_height: float) -> float:
 
 func snow_blend_at(world_height: float) -> float:
 	return maxf(world_height * snow_blend_frac, SNOW_BLEND_MIN)
-@export var color_rock: Color = Color(0.40, 0.41, 0.43)
+@export var color_rock: Color = Color(0.50, 0.50, 0.54)
 ## How steep a slope has to be before the surface turns to rock.
 @export_range(0.0, 1.0, 0.01) var rock_threshold: float = 0.7
 @export_range(0.0, 0.5, 0.01) var rock_blend: float = 0.15

@@ -946,8 +946,14 @@ project: read it before claiming how anything works.
   155, shotgun 26, cannon 307, mortar 92 - and turrets got a traverse rate (below). A vein's `max_hp`
   went to 500 with it (a drill takes a vein in the same seconds); `SHIELD_COST_X` did NOT move (1.17
   a point), so a dome lasts twice the seconds, like a block. Shares - the battery's blast, a
-  landing's wheel damage, the tear-off and fuse thresholds - follow by themselves. THE CABIN IS 2.5
-  BLOCKS OF ITS FACTION (the player's rule): Falsus 625, Marlit 4375. A weapon without its own row
+  landing's wheel damage, the tear-off and fuse thresholds - follow by themselves. **THEN EVERY
+  WEAPON WAS HALVED AGAIN** (the player's call), the numbers themselves so the codex reads them: gun 13
+  a shot (65 dps), laser 43, shotgun pellet 11, heavy cannon 77, rocket blast 116, mortar shell 31;
+  Marlit gun 21, laser 78, shotgun 13, cannon 154, mortar 46 (Aero and Stryx follow through
+  `G.FACTION_DAMAGE`). Not the drill and not the blasts: they are no guns, and a vein's hit points
+  are tuned to the drill (a gun shooting a vein mines at half now). THE CABIN IS 2.5 BLOCKS OF ITS
+  FACTION OVER 1.5 (the player's rules, the second with that halving): Falsus 417, Marlit 2917, Aero
+  292, Stryx 542 (they were 625 / 4375 / 438 / 812). A weapon without its own row
   falls to `DEFAULT_HP` and becomes the most fragile thing on the machine - which is what the enemy
   aims at.
 - **WHAT A HIT DOES DEPENDS ON WHAT HITS WHAT: TERRATECH'S DAMAGE TYPES** (the wiki's "Attack
@@ -970,9 +976,10 @@ project: read it before claiming how anything works.
   put its whole dps on what it picked at once. Yaw and pitch now move at `turn_speed` deg/s, the
   model follows the PIVOT, and `_handle_fire` holds the shot (timer spent, as for a blocked barrel)
   while the barrel is off. ONE DOOR for the base, laser, rocket launcher and mortar; a subclass sets
-  its rate in `_init` so a Marlit scene can override the export: gun 120, shotgun 100, laser 80,
-  rocket 70, heavy cannon 55, mortar 45; Marlit gun 90, shotgun 75, laser 60, cannon 40, mortar 35
-  (our numbers - the wiki gives none). The rest check is "the turn reached its rest" (`_aim_err`), not
+  its rate in `_init` so a Marlit scene can override the export: gun 30, shotgun 25, laser 20,
+  rocket 18, heavy cannon 15, mortar 12; Marlit gun 24, shotgun 20, laser 16, cannon 12, mortar 10.
+  THE PLAYER'S SCALE ("about 20 deg/s, as an example"): the first numbers, 45-120 deg/s, put a gun
+  on a target a quarter turn away in under a second, and in the game it read as no rate at all. The rest check is "the turn reached its rest" (`_aim_err`), not
   "pivot at zero": THE MORTAR'S PIVOT RESTS AT ITS PARKED ANGLE (`_idle_pitch`, set in `_ready`), or
   the pack would swing down from 45 deg at the first salvo. Measured on the proving ground in a fight:
   the largest turn per tick is exactly `turn_speed` for every gun, and they fire. The codex shows it.
@@ -1443,7 +1450,10 @@ project: read it before claiming how anything works.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
   player: constant seed, cleared stays cleared, saves store indices only. A cleared point drops
   NO INGOTS: what it leaves is what its build leaves (`scatter_blocks` at `LOOT_SURVIVE`), like
-  any machine. The old three-to-six ingots of the biome's metal on top were taken out.
+  any machine. The old three-to-six ingots of the biome's metal on top were taken out. **THEY COME
+  WITH THE THIRD GRADE** (`outposts.MIN_GRADE`, Falsus's grade; the player's call): below it no point
+  materialises and the radar shows none, the points themselves are laid by the seed as before. The
+  other turret posts were gated already (Take the Staging Point at grade 4, the towers on the story).
 
 ### Terrain (LiteTerrain, third-party addon we patched)
 
@@ -1694,8 +1704,9 @@ project: read it before claiming how anything works.
   (`art/ground_detail.py` -> `addons/LiteTerrain/ground_detail.png`, set by
   `TerrainBiomes.apply_to_material`; the player's call, after TerraTech's ground): R cracked earth
   (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B painted
-  grass (below), A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
-  ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
+  grass (below), A broad patches. The desert takes the ripples (`v_rip`, the snow softer ones), every
+  ground the dabs (below) and the patches, the salt flats the cracks and the rock the same cells as
+  light facets (`v_crack`). Periodic by construction, so it repeats every
   `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
   MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
   drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
@@ -1710,6 +1721,26 @@ project: read it before claiming how anything works.
   shade and warm sun, so the tile never reads as a tile; the greens are brighter (`color_grass`
   0.36/0.60/0.21, `grass_shade` 0.80, were 0.33/0.56/0.23 and 0.62). Same one fetch, a vertex noise
   more: checked on the real driver against the old meadow from three views.
+  **AND SO IS EVERY OTHER GROUND** (the player: "the meadow got prettier, the other biomes stayed the
+  same"). Each biome has its own pair of tints (`sand_` / `salt_` / `canyon_` / `rock_` / `snow_dark`
+  and `_light`, the meadow's is `stroke_dark` / `stroke_light`), blended PER VERTEX in the order the
+  colours are (`v_pd` / `v_pl`), and the fragment mixes the two by the same dab - cool shade against
+  warm light on sand, salt, strata, rock and snow alike; the ~25 m tone noise runs everywhere with the
+  pair's square root (which is what the meadow's own tone pair was, to two decimals). THE STRATA ARE
+  PAINTED: a band is one colour of a short palette round `color_canyon` (orange-red, deep red, a dusty
+  purple-brown, a rarer salmon) - its hash is a SINE hash, since `hash2D` on whole band numbers
+  clusters (a quarter over 0.9) and the rare pale band painted whole floors sand-coloured - and a
+  canyon CLIFF is its own stratum in shade, so the bands run up the walls (a flat dark brown hid
+  them); over the snow line a cliff is the mountain's grey rock, or a canyon under a mountain put
+  brown blots on its snow. The RIPPLES ARE A TINT (pale crest, deep ochre trough; on snow a blue
+  trough), the rock is cut into faint facets by the salt flat's cells (`rock_facets`), the rock is a
+  lighter blue-grey (`color_rock` 0.50/0.50/0.54, was 0.40/0.41/0.43) and the salt a paler crust
+  (0.90/0.84/0.74, was the sand's 0.86/0.75/0.58). SNOW HOLDS ON STEEPER GROUND than bare earth
+  (`SNOW_HOLD`, the rock's threshold lowered under snow): a far mountain's coarse normals read a whole
+  flank as rock, a grey smudge over its snow. EVERY STRENGTH COMES FROM THE VERTEX with the
+  detail's fade folded in (`v_rip`, `v_crack`, `v_patch`, and `grass_shade` into `v_base_col`), so
+  the fragment is a fetch and a few multiplies, fewer than the meadow alone took before. Checked on
+  the real driver, the same views of desert, canyon, salt and snow before and after.
 - **THE SALT FLATS ARE THE FIFTH BIOME** (TerraTech's dried lake bed, the player's first screenshot):
   `TerrainBiomes.salt_mask` - only on the desert, never under mountains. The land eases down to a bed
   made of the SAME base noise read at a twentieth of its frequency (`terrain_gen.raw_height_at`), so
@@ -2142,7 +2173,10 @@ project: read it before claiming how anything works.
   zero opacity and a speck of burnt block inside the capsule in the first frames.
   **THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS** (the player's design; `Music.set_held`, not the
   player's `enabled` switch): wind round the capsule from the start (a loop, louder and higher as it
-  falls), a quiet "piu-piu" alarm loop from the hit, both cut at the blast; the blast; and the main
+  falls); THE BLOW when the burnt piece strikes it (`intro_hit`: its whoosh in, the hull ringing as
+  a struck plate - inharmonic partials, each its own decay - a crunch, a scrape and debris rattling
+  off, started `HIT_PRE` before `T_HIT` so the blow lands with the sparks); a quiet "piu-piu" alarm
+  loop from the hit, both loops cut at the blast; the blast; and the main
   piece falling - a descending whistle and a rising rush ending in a thud timed to its landing
   (`art/intro_sounds.py` `FALL_HIT` = `T_LAND[MAIN] - T_BOOM`). Synthesised by `art/intro_sounds.py`
   into `resources/intro/intro_*.wav` (22 kHz mono; the loops carry a WAV `smpl` chunk, which the
@@ -3018,8 +3052,9 @@ project: read it before claiming how anything works.
   the far trees shadowed. On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
   before this change as after - not a regression.
 - **WHAT THE GROUND'S FRAGMENT DOES PER PIXEL IS WHAT HAS TO BE**: the zone colour, the rock fade, the
-  snow crust's tone (`v_base_col`, folded in per vertex now) and the ripple and crack strengths (folded
-  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the detail fetch, the shadow fetch and
+  snow crust's tone and the grass shade (`v_base_col`, folded in per vertex now), the painted pair
+  (`v_pd` / `v_pl`) and the ripple, crack and patch strengths (`v_rip`, `v_crack`, `v_patch`) are
+  vertex work; the per-pixel left is the detail fetch, the shadow fetch and
   the lighting. On llvmpipe the ground's shader
   costs ~34 ms of a 107 ms ground-only frame against a plain material (1920x1080, alternated), the
   detail block ~7-13 of it and the shadow ~5, and moving the shadow's window test to the vertices
@@ -3029,7 +3064,8 @@ project: read it before claiming how anything works.
 - **THE GROUND'S DETAIL IS CUT THREE WAYS, FOR GOOD** (`glsl.gdshader`; the player's call after the
   probe put the detail block at ~7 ms, tried first as garage switches and kept on, the switches gone):
   no per-pixel colour hash (`color_variation` and its cell are gone), the detail only out to
-  `DETAIL_FAR` (80 m, faded over `DETAIL_FADE`) where it ran to the solid haze, and the detail on the
+  `DETAIL_FAR` (160 m, faded over `DETAIL_FADE` 40; it was 80 / 20 and the player doubled it once the
+  ground was painted) where it ran to the solid haze, and the detail on the
   ground's own plane everywhere (canyon walls and cliffs streak; picking one of three planes a pixel
   went with it). The probe's "ground no detail" row cuts `if (v_det > 0.0)`.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,

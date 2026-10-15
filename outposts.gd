@@ -55,6 +55,13 @@ const TICK := 1.0
 ## живёт от собственных панелей. Три варианта оружия — это три разных боя на одной раскладке:
 ## пушка достаёт издалека, дробовик наказывает за подъезд вплотную, лазер жжёт непрерывно.
 const PRESETS := [11, 12, 13, 14, 15]
+## THE STRONGHOLDS COME WITH THE THIRD GRADE (the player's call: a fort of turrets is no fight for the
+## first machine). Below it the points stay on the map - the seed lays them all the same - but none
+## materialises and the radar shows none; reaching the grade brings them in on the next tick.
+const MIN_GRADE := 3
+
+func _open() -> bool:
+	return G.grade("start") >= MIN_GRADE
 
 var _points: Array = []          # [{pos: Vector3, preset: int, cleared: bool, node: Node3D}]
 var _t: float = 0.0
@@ -176,7 +183,7 @@ func _stream() -> void:
 			node = null
 		if bool(e["cleared"]):
 			continue
-		if node == null and d2 <= SPAWN_DIST * SPAWN_DIST and _clear_of_player(e["pos"]):
+		if node == null and d2 <= SPAWN_DIST * SPAWN_DIST and _open() and _clear_of_player(e["pos"]):
 			e["node"] = _spawn(e)
 		elif node != null and d2 > DESPAWN_DIST * DESPAWN_DIST:
 			# Убираем УЗЕЛ, а не точку: постройка вернётся на то же место такой же. Урон,
@@ -246,6 +253,8 @@ func _player() -> Node3D:
 ## показывал бы лишь то, что и так видно из окна.
 func blips(around: Vector3, radius: float) -> Array:
 	var out: Array = []
+	if not _open():
+		return out
 	var r2: float = radius * radius
 	for e in _points:
 		if bool(e["cleared"]):

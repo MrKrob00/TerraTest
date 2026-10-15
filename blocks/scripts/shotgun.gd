@@ -9,7 +9,7 @@ extends WeaponBlock
 # Exported so a faction's shotgun (marlit_shotgun.tscn) sets its own in the scene; the defaults are
 # the Falsus numbers.
 @export var pellets: int = 8            # дробин в выстреле
-@export var pellet_damage: int = 21      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
+@export var pellet_damage: int = 11      # all of a shot's pellets at point blank: several gun rounds at once
 @export var shotgun_range: float = 18.0
 @export var burst: int = 2              # выстрелов до перезарядки
 @export var reload: float = 0.4         # секунд
@@ -19,7 +19,7 @@ var _left: int = 2
 var _reload_t: float = 0.0
 
 func _init() -> void:
-	turn_speed = 100.0        # deg/s (WeaponBlock._turn_to): a short barrel pair, quick
+	turn_speed = 25.0        # deg/s (WeaponBlock._turn_to): a short barrel pair, quick
 
 func _ready() -> void:
 	super._ready()

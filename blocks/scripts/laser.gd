@@ -25,7 +25,7 @@ extends WeaponBlock
 ## четыре раза в секунду. Так у оружия появляется собственный ритм: видно, как ствол копит и
 ## когда разрядится, и по этому ритму от него можно уйти за угол.
 @export var laser_fire_rate: float = 0.9
-@export var laser_damage: int = 86
+@export var laser_damage: int = 43
 const BULLET_SCRIPT := preload("res://blocks/scripts/bullet.gd")
 
 ## НАКОПИТЕЛЬ: кольца, сбегающиеся к дулу. Их три и они идут со сдвигом фазы, поэтому поток
@@ -46,7 +46,7 @@ var _rings: Array[MeshInstance3D] = []
 
 func _init() -> void:
 	damage_kind = VehicleBlock.Dmg.ENERGY   # x1.5 on armour and batteries, x0.5 on shields
-	turn_speed = 80.0        # deg/s (WeaponBlock._turn_to): the lens stack is heavier than the gun
+	turn_speed = 20.0        # deg/s (WeaponBlock._turn_to): the lens stack is heavier than the gun
 
 func _ready() -> void:
 	super._ready()

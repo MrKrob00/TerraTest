@@ -185,11 +185,12 @@ static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) ->
 ## that hurts was halved (the player's call) and turrets got a traverse rate
 ## (`WeaponBlock.turn_speed`). The ladder between blocks is unchanged: armour three times a block,
 ## plates by area, a half block two thirds.
-## THE CABIN IS 2.5 BLOCKS OF ITS FACTION (the player's rule): Falsus 625, Marlit 4375.
+## THE CABIN IS 2.5 BLOCKS OF ITS FACTION OVER 1.5 (the player's rules, the second cutting it by
+## 1.5 when every weapon's damage was halved): Falsus 417, Marlit 2917.
 ## A weapon without a row falls to DEFAULT_HP and is the most fragile thing on the machine - which is
 ## what the enemy aims at.
 const BLOCK_HP: Dictionary = {
-	G.Block.CABIN:     625,       # 2.5 blocks (the player's rule): the heart, not a bunker
+	G.Block.CABIN:     417,       # 2.5 blocks / 1.5 (the player's rules): the heart, not a bunker
 	G.Block.WHEEL:     190,
 	G.Block.BLOCK:     250,
 	G.Block.DRILL:     265,      # носовой блок: принимает удар первым, им же и работают
@@ -247,7 +248,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_WHEEL:     750,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
 	G.Block.MARLIT_SUPPORT:     1375,   # a casting: tougher than its eight cells of frame, short of the block
 	G.Block.MARLIT_ROT_SUPPORT: 1250,
-	G.Block.MARLIT_CABIN:     4375,      # 2.5 Marlit blocks, as the Falsus cabin
+	G.Block.MARLIT_CABIN:     2917,      # 2.5 Marlit blocks / 1.5, as the Falsus cabin
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
 	G.Block.MARLIT_GUN:       700,
@@ -262,7 +263,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_WIRELESS:  500,
 	G.Block.MARLIT_OCTO:      5875,    # 27 cells at the basic block's rate
 	# Aero and Stryx stubs (G.STUB_BASE): their Falsus base's row, Aero x0.7, Stryx x1.3.
-	G.Block.AERO_CABIN: 438,
+	G.Block.AERO_CABIN: 292,
 	G.Block.AERO_BLOCK: 175,
 	G.Block.AERO_BLOCK2: 98,
 	G.Block.AERO_BLOCK3: 262,
@@ -290,7 +291,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.AERO_WIRELESS: 119,
 	G.Block.AERO_SUPPORT: 98,
 	G.Block.AERO_ROT_SUPPORT: 144,
-	G.Block.STRYX_CABIN: 812,
+	G.Block.STRYX_CABIN: 542,
 	G.Block.STRYX_BLOCK: 325,
 	G.Block.STRYX_BLOCK2: 182,
 	G.Block.STRYX_BLOCK3: 488,

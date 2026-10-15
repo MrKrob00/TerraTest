@@ -5,6 +5,8 @@ and the fall has a voice of its own). Writes resources/intro/*.wav, 22050 Hz mon
                      whose centre wanders (gusts), a low rumble under it, a thin hiss over it
   intro_alarm.wav    a LOOP: "piu-piu" and a pause - two falling electronic chirps, not loud; from the
                      moment the capsule is hit until it blows up
+  intro_hit.wav      the burnt piece striking the capsule: a whoosh in, the hull's metal ringing, a
+                     crunch, a scrape and debris rattling off; the blow at HIT_PRE seconds
   intro_boom.wav     the explosion: a crack, a boom whose brightness falls away, a sub thump, crackle
   intro_fall.wav     the main piece falling: a descending whistle and a rising rush of air, ending in
                      a dull thud at FALL_HIT seconds - planetfall.gd starts it at the blast so the thud
@@ -25,6 +27,7 @@ from scipy import signal
 SR = 22050
 OUT = os.path.join(os.path.dirname(__file__), "..", "resources", "intro")
 FALL_HIT = 4.2          # planetfall.gd: T_LAND[MAIN] - T_BOOM
+HIT_PRE = 0.3           # planetfall.gd HIT_PRE: the whoosh before the blow
 
 
 def rng(seed):
@@ -146,6 +149,53 @@ def alarm():
     write_wav("intro_alarm.wav", norm(x, -6.0), loop=True)
 
 
+def hit():
+    """The burnt piece striking the capsule: a short whoosh of it coming in, then the blow - a sharp
+    crack, the hull RINGING (inharmonic partials, each its own decay, bent down as the plate gives),
+    a low thump, a crunch, a scrape off the side and bits of debris rattling away. The blow sits at
+    HIT_PRE: planetfall.gd starts the file that much before T_HIT."""
+    sec = HIT_PRE + 2.2
+    t = t_axis(sec)
+    r = rng(41)
+    white = r.standard_normal(len(t))
+    ta = np.clip(t - HIT_PRE, 0.0, None)
+    after = t >= HIT_PRE
+    # the whoosh: a band of noise rising in pitch and loudness as the piece closes in
+    k = np.clip(t / HIT_PRE, 0.0, 1.0)
+    whoosh = swept_band(lowpass(white, 3000, 2), 300 + 1500 * k ** 2, 2.0) * k ** 2.5 * (t < HIT_PRE + 0.03)
+    crack = highpass(white, 1500, 2) * np.exp(-ta / 0.012) * after
+    # the ring: a struck plate's partials are not a harmonic series; each dies at its own rate
+    ring = np.zeros(len(t))
+    for f, tau, a in ((287, 0.9, 1.0), (463, 0.7, 0.8), (771, 0.55, 0.7), (1093, 0.4, 0.55),
+                      (1517, 0.3, 0.45), (2129, 0.22, 0.35), (2870, 0.15, 0.25)):
+        f = f * r.uniform(0.98, 1.02)
+        bend = f * (1.0 + 0.06 * np.exp(-ta / 0.05))      # the plate dents, the pitch drops
+        ph = 2 * np.pi * np.cumsum(bend) / SR
+        ring += a * np.sin(ph + r.uniform(0, 2 * np.pi)) * np.exp(-ta / tau)
+    ring *= after * (0.85 + 0.15 * np.sin(2 * np.pi * 7.0 * ta))    # a beat as it wobbles
+    thump = np.sin(2 * np.pi * np.cumsum(55 + 45 * np.exp(-ta / 0.04)) / SR) * np.exp(-ta / 0.18) * after
+    crunch = signal.lfilter(*signal.butter(2, [700 / (SR / 2), 4000 / (SR / 2)], "band"), white) \
+        * (r.random(len(t)) < 0.25) * np.exp(-ta / 0.09) * after
+    # the scrape off the side: a resonant band sliding down
+    scrape = swept_band(r.standard_normal(len(t)), 2200 * np.exp(-ta / 0.35) + 500, 6.0) \
+        * np.clip(ta / 0.03, 0, 1) * np.exp(-ta / 0.3) * after
+    # debris rattling away: sparse ticks thinning out
+    ticks = np.zeros(len(t))
+    for _ in range(70):
+        at = HIT_PRE + 0.05 + r.exponential(0.35)
+        i = int(at * SR)
+        if i < len(t) - 300:
+            n = int(r.uniform(80, 260))
+            fr = r.uniform(1800, 4200)
+            ticks[i:i + n] += r.uniform(0.2, 1.0) * np.sin(2 * np.pi * fr * np.arange(n) / SR) \
+                * np.exp(-np.arange(n) / (n * 0.25))
+    ticks *= np.exp(-ta / 0.6)
+    x = norm(whoosh, 0) * 0.35 + norm(crack, 0) * 0.55 + norm(ring, 0) * 0.62 + norm(thump, 0) * 0.8 \
+        + norm(crunch, 0) * 0.45 + norm(scrape, 0) * 0.3 + norm(ticks, 0) * 0.28
+    x *= np.minimum((sec - t) / 0.3, 1.0)
+    write_wav("intro_hit.wav", norm(np.tanh(x * 1.5), -1.0))
+
+
 def boom():
     sec = 3.6
     t = t_axis(sec)
@@ -200,5 +250,6 @@ def fall():
 if __name__ == "__main__":
     wind()
     alarm()
+    hit()
     boom()
     fall()
