@@ -653,15 +653,61 @@ func _fresh_start() -> void:
 	# capsule falls burning, the last piece of it lands on the start point, and that is where the
 	# smouldering ground, the cabin and the kit appear - the intro lays them itself, on landing or on
 	# a tap that skips it. The debug switch `intro` (Main -> World) skips it outright.
+	var kit_given := false
 	if not G.proving_ground and site_root != null and G.debug(&"intro", true):
-		var intro: Node = load("res://planetfall.gd").make(site_root, (primary as Node3D).global_position, primary)
-		await intro.finished
-		return
-	# Where the player wakes: burnt cubes on smouldering ground (crash_site.gd). A new world only.
-	if not G.proving_ground and site_root != null:
+		kit_given = await _play_intro(site_root, primary)
+		if not is_instance_valid(primary):
+			return
+	# Where the player wakes: burnt cubes on smouldering ground (crash_site.gd). A new world only -
+	# and laid here whenever the intro did not lay it itself.
+	if not G.proving_ground and site_root != null and get_tree().get_first_node_in_group("crash_site") == null:
 		load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
-	primary.award_block_list(G.STARTER_KIT)
+	if not kit_given:
+		primary.award_block_list(G.STARTER_KIT)
+
+## THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"
+## - the intro had taken over laying both, so anything that stopped it took them too). It gets
+## INTRO_WAIT to start (it waits for the loading screen) and INTRO_RUN to finish; past either, or if
+## its script does not load, it is taken down - its _exit_tree shows the cabin and the UI again - the
+## game camera is made current, and the caller lays whatever it did not. Answers whether it handed
+## out the kit.
+const INTRO_WAIT := 120.0
+const INTRO_RUN := 60.0
+
+func _play_intro(site_root: Node, primary: Node3D) -> bool:
+	var script = load("res://planetfall.gd")
+	if not (script is GDScript) or not (script as GDScript).can_instantiate():
+		push_warning("world_persist: planetfall.gd did not load, the start is laid without the intro")
+		return false
+	var intro = script.make(site_root, primary.global_position, primary)
+	if not is_instance_valid(intro):
+		return false
+	var t0: int = Time.get_ticks_msec()
+	var started: int = -1
+	while is_instance_valid(intro) and intro.get("_done") != true:
+		var now: int = Time.get_ticks_msec()
+		if started < 0 and intro.get("_running") == true:
+			started = now
+		if (started < 0 and now - t0 > int(INTRO_WAIT * 1000.0)) \
+				or (started >= 0 and now - started > int(INTRO_RUN * 1000.0)):
+			push_warning("world_persist: the intro did not finish, the start is laid without it")
+			break
+		await get_tree().process_frame
+	var given: bool = is_instance_valid(intro) and intro.get("_kit_given") == true
+	if is_instance_valid(intro) and intro.get("_done") != true:
+		intro.queue_free()
+		var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+		var cam = cc.get("camera") if cc != null else null
+		if cam is Camera3D and is_instance_valid(cam):
+			(cam as Camera3D).current = true
+		if is_instance_valid(primary):
+			if primary.has_meta("intro_hidden"):
+				primary.remove_meta("intro_hidden")
+			primary.visible = true
+			if primary is RigidBody3D:
+				(primary as RigidBody3D).freeze = false
+	return given
 
 ## A NEW WORLD OPENS ON THE NEAREST PLAIN (`ChunkTerrain.start_point`, picked from the seed before
 ## the first ring was built there): the scene's own spot could be a canyon floor or a mountainside.
@@ -687,6 +733,12 @@ func _to_start_point(veh: Node3D) -> void:
 func _save_world() -> void:
 	if G.proving_ground:
 		return                                     # вторая дверь: _notification зовёт нас в обход _ready
+	# NOTHING IS WRITTEN BEFORE THE WORLD IS PUT BACK: a pause, a close or the back key during the
+	# loading or the planetfall intro wrote a half world - a new one's bare cabin with no kit yet, which
+	# every later load then came back to, with no intro, no kit and no crash site (the player's report);
+	# a restore cut short the same way.
+	if not world_ready:
+		return
 	var machines: Array = []
 	# The machine the player CONTROLS is written FIRST: loading puts machines[0] on it
 	# (_load_world -> _restore_machine(primary, ...)), and child order in Vehicles knows nothing about
