@@ -176,6 +176,9 @@ const FLAT_COLOR := Color(0.0, 0.0, 1.0, 0.0)
 var forced_seed: int = 0
 
 signal terrain_ready
+## The ground under `area` (world XZ) changed: an edit landed or was forgotten. Whoever keeps heights
+## of their own asks again there (`sun_shadows.gd`'s ground shade keeps its grid between refreshes).
+signal ground_changed(area: Rect2)
 var terrain_is_ready: bool = false
 ## Экран загрузки читает эти два: что считается и какая доля пройдена.
 var gen_step: String = ""
@@ -779,6 +782,8 @@ func _invalidate(area: Rect2) -> void:
 				cs.queue_free()
 			_col.erase(key)
 			_col_seen.erase(key)
+	var o: Vector3 = global_transform.origin if is_inside_tree() else Vector3.ZERO
+	ground_changed.emit(Rect2(area.position + Vector2(o.x, o.z), area.size))
 
 ## ЗАБЫТЬ ПРАВКИ РЕЛЬЕФА — и только их. Земля считается из сида, сбрасывать в ней нечего: она и
 ## так та, какой родилась. Пересчитываем ровно те чанки, которых правки касались.
@@ -2312,6 +2317,56 @@ func known_height(wx: float, wz: float) -> float:
 			var h: float = _grid_h(hs, (p.x - float(bcx >> l) * span) / cell, (p.z - float(bcz >> l) * span) / cell)
 			return (global_transform * Vector3(p.x, h, p.z)).y
 	return NAN
+
+## A number that moves whenever a node is built or dropped or the leaf set changes (`_cover_ep`): the
+## sun shadow asks it before reading again the heights it had none for, so ground that cannot have
+## changed is not asked twice.
+func built_epoch() -> int:
+	return _cover_ep
+
+## A ROW OF `known_height`, written into `out` from index `at`: `count` points from (x0, z) every `step`
+## along world X, `none` where no height is held. One call and one inverse for the row, and the node
+## looked up once per level-0 chunk - which node answers depends on that chunk alone - where a call a
+## point was most of what the sun shadow's ground shade cost (2.7 ms a frame at 20 m/s on the real
+## driver, optimize=none). `out` is written in place (a packed array is passed by reference).
+func known_heights_into(out: PackedFloat32Array, at: int, x0: float, z: float, step: float, count: int, none: float = NAN) -> void:
+	if _gen == null:
+		for i in count:
+			out[at + i] = none
+		return
+	var xf: Transform3D = global_transform
+	var plain: bool = xf == Transform3D.IDENTITY
+	var inv: Transform3D = xf.affine_inverse()
+	var hs := _no_h
+	var last_x: int = 1 << 40
+	var last_z: int = 1 << 40
+	var cell := 1.0
+	var gx0 := 0.0
+	var gz0 := 0.0
+	for i in count:
+		var p: Vector3 = Vector3(x0 + float(i) * step, 0.0, z)
+		if not plain:
+			p = inv * p
+		var bcx: int = floori(p.x / CHUNK)
+		var bcz: int = floori(p.z / CHUNK)
+		if bcx != last_x or bcz != last_z:
+			last_x = bcx
+			last_z = bcz
+			hs = _no_h
+			for l in MAX_LOD + 1:
+				var got = _hc.get(_key(l, bcx >> l, bcz >> l))
+				if got != null and (got as PackedFloat32Array).size() == APRON * APRON:
+					hs = got
+					var span := float(CHUNK << l)
+					cell = float(1 << l)
+					gx0 = float(bcx >> l) * span
+					gz0 = float(bcz >> l) * span
+					break
+		if hs.size() != APRON * APRON:
+			out[at + i] = none
+			continue
+		var h: float = _grid_h(hs, (p.x - gx0) / cell, (p.z - gz0) / cell)
+		out[at + i] = h if plain else (xf * Vector3(p.x, h, p.z)).y
 
 ## The DRAWN ground's height at a world XZ, NAN where nothing is drawn: what the screen shows, read
 ## off the heights the drawn node was built from (`_drawn_h`, the occlusion test's own read).
