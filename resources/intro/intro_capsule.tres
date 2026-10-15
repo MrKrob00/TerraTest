@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://2apo0od60uxx"]
 
-[ext_resource type="Texture2D" path="res://objects/intro_capsule_texture.png" id="1_hcqq6"]
+[ext_resource type="Texture2D" uid="uid://d0q2rq265ttte" path="res://objects/intro_capsule_texture.png" id="1_hcqq6"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mqlmm"]
 resource_name = "intro_capsule"
