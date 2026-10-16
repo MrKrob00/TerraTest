@@ -2571,7 +2571,7 @@ project: read it before claiming how anything works.
 - **THE FPS COUNTER IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A CANVAS LAYER OF ITS OWN**
   (`hud._fps_lbl`, `FPS_LAYER` 90; the player's call): it was a 48 px number in the top middle inside
   the HUD, which the garage - a child of the HUD added last - covered. Over everything it shows in the
-  garage too; `G.show_fps` (garage SETTINGS -> INTERFACE, kept in `settings.json`) hides it. A tap
+  garage too; `G.show_fps` (SETTINGS -> GRAPHICS, kept in `settings.json`) hides it. A tap
   still opens the profiler, except over the garage, where it lets taps through (`MOUSE_FILTER_IGNORE`
   while the garage is open). The text is set every `FPS_EVERY` and only when the number changed.
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
@@ -2585,14 +2585,27 @@ project: read it before claiming how anything works.
   it. Panels that merely hover over the world go in the group `hud_float`, so the garage hides
   them all at once; `quests` stays its own group, since the radar moves THAT window
   (`set_top_offset`) and has no business moving a developer panel.
-- LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
-  means English). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
-  `TranslationServer` by `G._load_translations`): a string starts being translated the moment its
-  row appears, an unwrapped one keeps working. Scene text translates itself; text set from code
-  needs `tr()`. **The game is translated in full** — menu, HUD, garage, shop, tech tree, codex,
+- LANGUAGE: en / ru / uk / es / pt_BR / de / fr / tr / ja / ko / zh_CN / id, picked in SETTINGS ->
+  LANGUAGE (menu or garage, `G.set_lang`, kept in `settings.json`, empty means English - the
+  player's call, a phone locale does not switch it). The KEY IS THE ENGLISH STRING ITSELF
+  (`i18n/strings.json`, loaded into `TranslationServer` by `G._load_translations`): a string starts
+  being translated the moment its row appears, an unwrapped one keeps working. Scene text translates
+  itself; text set from code needs `tr()`. ru and uk are complete; the other nine cover the UI,
+  HUD, shop, settings, block/material names and quest titles/objectives, and the LONG texts (quest
+  descriptions, Mechanic lines, block descriptions over ~50 characters) fall back to English until
+  someone writes them. CJK GLYPHS ARE THE GAME'S OWN: three Noto Sans CJK subsets in `fonts/`
+  (OFL, ~540 KB together) hang as fallbacks on the default font (`G._apply_cjk_fonts`), order by
+  language. They hold ONLY the characters the translations use: new ja/ko/zh_CN text means
+  `tools/subset_cjk_fonts.py`, or the new characters go to the phone's own fonts (slow, §0.11). **The game is translated in full** — menu, HUD, garage, shop, tech tree, codex,
   quests, Mechanic and System lines, block and material names. A new user-facing string is a `tr()`
   plus a row in the same commit; `i18n/strings.json` keys are matched BYTE FOR BYTE, leading and
   trailing spaces included.
+- SETTINGS ARE ONE SCREEN, `SettingsView` (settings_view.gd), opened by the menu (`menu._ensure_view`)
+  and the garage SETTINGS tab (`tech_ui._build_settings_tab`): a rail of categories (GRAPHICS, AUDIO,
+  CONTROLS, GAME, LANGUAGE), a card per setting, a LOW/MEDIUM/HIGH preset row that reads CUSTOM
+  once any option differs (MEDIUM = Main's defaults), RESET TO DEFAULTS per category. Graphics go
+  through Main's setters when the world is up and straight into `settings.json` from the menu - the
+  view keeps no copy. A new setting is a row there, not a second widget in some other panel.
 - WHERE A STRING IS TRANSLATED IS AT THE EDGE, not where the data is written. Quest titles, hints
   and descriptions stay ENGLISH in `quest_manager`; `quests.gd`, the tracker and `Dialogue` call
   `tr()` on them as they draw. The same rule made `research_lock_reason` split in two: a CODE for

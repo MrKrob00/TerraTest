@@ -104,110 +104,35 @@ func _fill_news() -> void:
 			_news_list.add_child(l)
 
 # ── Settings ─────────────────────────────────────────────────────────────────
-## The camera values are the same ones as in game (`hud._build_settings_panel`) and the same `G`
-## fields (settings.json): one setting, wherever it is opened. A separate copy exists here only
-## because the HUD does not exist before entering a world.
-##
-## The menu fight switch is the exception - it belongs to this screen alone, and the stage is told
-## about it straight away rather than at the next start.
+## THE SETTINGS ARE `SettingsView`, THE SAME ONE THE GARAGE OPENS (settings_view.gd): categories on a
+## rail, a card per setting, graphics presets. Here it shows the menu's music list, and the menu
+## fight switch is passed on to the stage straight away rather than at the next start. It is built
+## when the settings first open - see `_music_panel` history: the menu's first frame is not the
+## place for it.
+var _view: SettingsView = null
+
 func _bind_settings() -> void:
-	var look: HSlider = %LookSlider
-	var zoom: HSlider = %ZoomSlider
-	look.value = G.cam_look_sens
-	zoom.value = G.cam_zoom_sens
-	MusicPanel.slider_look(look)
-	MusicPanel.slider_look(zoom)
-	%LookValue.text = "%.2f" % G.cam_look_sens
-	%ZoomValue.text = "%.2f" % G.cam_zoom_sens
-	look.value_changed.connect(_on_look_sens)
-	zoom.value_changed.connect(_on_zoom_sens)
-	var inv: CheckButton = %InvertY
-	inv.button_pressed = G.cam_invert_y
-	inv.toggled.connect(_on_invert_y)
-	var fight: CheckButton = %MenuFight
-	fight.button_pressed = G.menu_battles
-	fight.toggled.connect(_on_menu_fight)
-	_bind_lang()
-	_bind_sections()
 	(%CloseSettings as Button).pressed.connect(_close_settings)
 
-## РАЗДЕЛЫ. Камера, звук и игра лежали одним столбцом из шести разнородных виджетов: ползунок
-## чувствительности стоял вплотную к выбору языка, и найти в нём что-либо можно было только
-## прочитав всё. Заголовки рисует та же функция, что делит списки в панели музыки.
-##
-## Список ПРОКРУЧИВАЕТСЯ и его высота считается по экрану: с музыкой в настройках содержимое
-## перестало помещаться в телефон, а CenterContainer не обрежет панель — он вырастит её за
-## края экрана вместе с кнопкой ЗАКРЫТЬ.
-## Пересобирается целиком при смене языка: текст сцены движок переводит сам, а строку,
-## поставленную из кода, — нет, и заголовки остались бы на прежнем языке.
-func _bind_sections() -> void:
-	for host in [%SecCamera, %SecSound, %SecGame, %MusicHost]:
-		for c in (host as Node).get_children():
-			(host as Node).remove_child(c)
-			c.queue_free()
-	(%SecCamera as Node).add_child(MusicPanel.section_head(tr("CAMERA")))
-	(%SecSound as Node).add_child(MusicPanel.section_head(tr("SOUND")))
-	(%SecGame as Node).add_child(MusicPanel.section_head(tr("GAME")))
-	if _settings.visible:
-		_music_panel()             # a language switch rebuilt the open panel's sections
-
-## THE MUSIC PANEL IS BUILT WHEN THE SETTINGS FIRST OPEN, not with the menu: it was built in the
-## menu's first frame behind a closed panel, twice (once in its `_ready`, again in `setup`), and that
-## frame was 0.57 s of script on the player's profiler - 528 ms of it the first shaping of its "⏭",
-## a sign the game's font lacks (see `MusicPanel._now_playing`). Only its own list: the menu's
-## settings speak about the menu, and the world's tracks have nothing to do here.
-func _music_panel() -> void:
-	if (%MusicHost as Node).get_child_count() > 0:
+func _ensure_view() -> void:
+	if is_instance_valid(_view):
 		return
+	_view = SettingsView.new()
 	var m := get_node_or_null("/root/Music")
 	if m != null:
-		var panel := MusicPanel.new()
-		panel.contexts = [m.Ctx.MENU]           # before it enters the tree: one build, not two
-		(%MusicHost as Node).add_child(panel)
+		_view.contexts = [m.Ctx.MENU]
+	_view.lang_changed.connect(_on_lang_changed)
+	_view.menu_fight_changed.connect(_on_menu_fight)
+	(%PageCol as Node).add_child(_view)
 
-## ЯЗЫК. Подписи пунктов — на своих языках, а не переведённые: человек, открывший чужой язык по
-## ошибке, должен найти свой в списке, не понимая ни слова вокруг.
-const LANG_NAMES := {"en": "English", "ru": "Русский", "uk": "Українська"}
-
-func _bind_lang() -> void:
-	var pick: OptionButton = %LangPick
-	pick.clear()
-	var cur: String = G.current_lang()
-	for i in G.LANGS.size():
-		var code: String = String(G.LANGS[i])
-		pick.add_item(String(LANG_NAMES.get(code, code)), i)
-		if code == cur:
-			pick.select(i)
-	pick.item_selected.connect(_on_lang_picked)
-
-## Переключение языка ПЕРЕСОБИРАЕТ экран: подписи уже нарисованы, и сами по себе они не меняются —
-## сцена переводится при загрузке, а кнопки слева вообще строятся кодом.
-func _on_lang_picked(idx: int) -> void:
-	if idx < 0 or idx >= G.LANGS.size():
-		return
-	G.set_lang(String(G.LANGS[idx]))
+## A language switch rebuilds what code drew: the scene's own labels translate themselves, the left
+## column is built by code and would stay in the old language.
+func _on_lang_changed() -> void:
 	_rebuild_left()
-	_bind_sections()
-
-func _on_look_sens(v: float) -> void:
-	G.cam_look_sens = v
-	%LookValue.text = "%.2f" % v
-	G.save_settings()
-
-func _on_zoom_sens(v: float) -> void:
-	G.cam_zoom_sens = v
-	%ZoomValue.text = "%.2f" % v
-	G.save_settings()
-
-func _on_invert_y(on: bool) -> void:
-	G.cam_invert_y = on
-	G.save_settings()
 
 ## Switched here and taken up at once: the fight either starts on the spot or is cleared away with
 ## its map. Waiting for a restart to show what a switch did is how a switch gets pressed twice.
 func _on_menu_fight(on: bool) -> void:
-	G.menu_battles = on
-	G.save_settings()
 	var stage := get_node_or_null("%Stage")
 	if stage != null and stage.has_method("set_battles"):
 		stage.set_battles(on)
@@ -218,7 +143,7 @@ func _on_menu_fight(on: bool) -> void:
 ## news, the buttons - is HIDDEN while it is open, not merely covered: a covered button still takes
 ## a tap through a gap. The phone's back key and Esc close it instead of leaving the game.
 func _open_settings() -> void:
-	_music_panel()
+	_ensure_view()
 	%Root.visible = false
 	_settings.visible = true
 	get_tree().quit_on_go_back = false

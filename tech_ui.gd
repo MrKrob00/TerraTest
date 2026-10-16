@@ -1702,13 +1702,19 @@ func _select_tab(idx: int) -> void:
 	_shop_v2_show(is_shop)
 	if _codex_root:
 		_codex_root.visible = is_codex
+	var is_settings: bool = _tab == TAB_SETTINGS
 	if _extra_scroll:
-		_extra_scroll.visible = extra_list
+		_extra_scroll.visible = extra_list and not is_settings
+	if is_instance_valid(_set_view):
+		_set_view.visible = is_settings
+	var rpanel: Control = get_node_or_null("Root/Main/RightPanel") as Control
+	if rpanel != null:
+		rpanel.visible = not is_settings
 	if _tech_root:
 		_tech_root.visible = is_tech
 	if _search:
 		_search.visible = not (extra_list or is_tech or is_build or is_codex or is_shop)
-	_widen_left_panel(is_tech or is_codex or is_shop)   # графу нужна та же ширина, что и древу
+	_widen_left_panel(is_tech or is_codex or is_shop or is_settings)   # графу нужна та же ширина, что и древу
 	_show_left_panel(not is_build)
 	_set_world_clickthrough(is_build)
 	tab_changed.emit(_tab)
@@ -2100,234 +2106,37 @@ func _on_view_distance(v: float, lbl: Label) -> void:
 	if mn and mn.has_method("set_view_distance"):
 		mn.set_view_distance(v)
 
+## THE SETTINGS TAB IS `SettingsView` (settings_view.gd), the same screen the main menu opens: one
+## camera slider, one graphics preset row, wherever they are reached from. The garage adds only what
+## needs a world - the controls layout, the surrender and the way back to the menu. The view has its
+## own scroll, so it sits in Body beside the list, not inside the list's ScrollContainer (a scroll in
+## a scroll gets no height); the machine stats step aside while it is open, like for the shop.
+var _set_view: SettingsView = null
+
 func _build_settings_tab() -> void:
-	if _extra_vb == null:
+	if is_instance_valid(_set_view):
+		_set_view.visible = true
 		return
-	_clear_extra()
-	var main: Node = get_node_or_null("/root/Main")
-	_extra_header("— GRAPHICS —")
-	if main == null or not ("auto_fps" in main):
-		_extra_header(tr("Main with auto-FPS not found"))
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
 		return
-	var auto_btn := CheckButton.new()
-	auto_btn.text = tr("Auto FPS (render scale adjusts itself)")
-	auto_btn.button_pressed = bool(main.auto_fps)
-	auto_btn.add_theme_font_size_override("font_size", 14)
-	_extra_vb.add_child(auto_btn)
+	_set_view = SettingsView.new()
+	_set_view.in_game = true
+	var m: Node = _music()
+	if m != null:
+		_set_view.contexts = [m.Ctx.TRAVEL, m.Ctx.BATTLE]
+	_set_view.actions = [
+		["Move controls", "Put Attack, Build, the map and the rest where your thumbs reach them.", _on_move_controls, false],
+		["Main menu (switch world)", "Your world is saved. Pick another slot in the menu.", _to_main_menu, false],
+		["Surrender", "Blows up this machine's cabin: its blocks fall where it stands, and you start again in a new cabin.", _ask_surrender, true],
+	]
+	_set_view.lang_changed.connect(_on_settings_lang)
+	body.add_child(_set_view)
 
-	var scale_row := HBoxContainer.new()
-	scale_row.visible = not bool(main.auto_fps)
-	_extra_vb.add_child(scale_row)
-	var scale_lbl := Label.new()
-	scale_lbl.text = tr("Scale: %d%%") % int(round(float(main.manual_scale) * 100.0))
-	scale_lbl.custom_minimum_size = Vector2(130, 0)
-	scale_lbl.add_theme_font_size_override("font_size", 13)
-	scale_row.add_child(scale_lbl)
-	var scale_sl := HSlider.new()
-	scale_sl.min_value = 0.25
-	scale_sl.max_value = 2.0
-	scale_sl.step = 0.05
-	scale_sl.value = float(main.manual_scale)
-	scale_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scale_sl.value_changed.connect(func(v: float) -> void:
-		scale_lbl.text = tr("Scale: %d%%") % int(round(v * 100.0))
-		var mn: Node = get_node_or_null("/root/Main")
-		if mn and mn.has_method("set_manual_scale"):
-			mn.set_manual_scale(v))
-	scale_row.add_child(scale_sl)
-
-	auto_btn.toggled.connect(func(on: bool) -> void:
-		var mn: Node = get_node_or_null("/root/Main")
-		if mn and mn.has_method("set_auto_fps"):
-			mn.set_auto_fps(on)
-		scale_row.visible = not on)
-
-	var hint := Label.new()
-	hint.text = tr("Auto mode holds ~30 FPS and sets the scale itself. Turn it off to set the scale by hand: on a phone a lower scale gives the most frames.")
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 12)
-	hint.modulate = Color(1, 1, 1, 0.55)
-	_extra_vb.add_child(hint)
-
-	if "shadows_enabled" in main:
-		var shadow_btn := CheckButton.new()
-		shadow_btn.text = tr("Shadows")
-		shadow_btn.button_pressed = bool(main.shadows_enabled)
-		shadow_btn.add_theme_font_size_override("font_size", 14)
-		_extra_vb.add_child(shadow_btn)
-		shadow_btn.toggled.connect(func(on: bool) -> void:
-			var mn: Node = get_node_or_null("/root/Main")
-			if mn and mn.has_method("set_shadows_enabled"):
-				mn.set_shadows_enabled(on))
-
-		var full_btn := CheckButton.new()
-		full_btn.text = tr("Full shadows (slow)")
-		full_btn.button_pressed = bool(main.get("shadows_engine") == true)
-		full_btn.add_theme_font_size_override("font_size", 14)
-		_extra_vb.add_child(full_btn)
-		full_btn.toggled.connect(_on_full_shadows)
-
-		var shadow_hint := Label.new()
-		shadow_hint.text = tr("Shadows are fast: machines and trees on the ground. Full shadows also shade hills and cost about half the frame on a phone.")
-		shadow_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		shadow_hint.add_theme_font_size_override("font_size", 12)
-		shadow_hint.modulate = Color(1, 1, 1, 0.55)
-		_extra_vb.add_child(shadow_hint)
-
-	if "view_distance" in main:
-		var vd_row := HBoxContainer.new()
-		_extra_vb.add_child(vd_row)
-		var vd_lbl := Label.new()
-		vd_lbl.text = tr("Draw distance: %d m") % int(main.view_distance)
-		vd_lbl.custom_minimum_size = Vector2(170, 0)
-		vd_lbl.add_theme_font_size_override("font_size", 13)
-		vd_row.add_child(vd_lbl)
-		var vd_sl := HSlider.new()
-		vd_sl.min_value = float(main.VIEW_MIN)
-		vd_sl.max_value = float(main.VIEW_MAX)
-		vd_sl.step = 100.0
-		vd_sl.value = float(main.view_distance)
-		vd_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vd_sl.value_changed.connect(_on_view_distance.bind(vd_lbl))
-		vd_row.add_child(vd_sl)
-		var vd_hint := Label.new()
-		vd_hint.text = tr("How far the ground is drawn. Far costs frames and memory.")
-		vd_hint.add_theme_font_size_override("font_size", 12)
-		vd_hint.modulate = Color(1, 1, 1, 0.55)
-		_extra_vb.add_child(vd_hint)
-		if "hlod_on" in main:
-			var hl_btn := CheckButton.new()
-			hl_btn.text = tr("Merge far ground")
-			hl_btn.button_pressed = bool(main.hlod_on)
-			hl_btn.add_theme_font_size_override("font_size", 14)
-			_extra_vb.add_child(hl_btn)
-			hl_btn.toggled.connect(_on_hlod)
-			var hl_hint := Label.new()
-			hl_hint.text = tr("Fewer draw calls for distant ground. Turn off to compare FPS.")
-			hl_hint.add_theme_font_size_override("font_size", 12)
-			hl_hint.modulate = Color(1, 1, 1, 0.55)
-			_extra_vb.add_child(hl_hint)
-
-	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
-	if OS.has_feature("pc") and "fullscreen" in main:
-		var fs_btn := CheckButton.new()
-		fs_btn.text = tr("Fullscreen mode (off — floating window)")
-		fs_btn.button_pressed = bool(main.fullscreen)
-		fs_btn.add_theme_font_size_override("font_size", 14)
-		fs_btn.toggled.connect(func(on: bool) -> void:
-			var mn: Node = get_node_or_null("/root/Main")
-			if mn and mn.has_method("set_fullscreen"):
-				mn.set_fullscreen(on))
-		_extra_vb.add_child(fs_btn)
-
-	if "ui_scale" in main:
-		_extra_header("— INTERFACE —")
-		var ui_row := HBoxContainer.new()
-		_extra_vb.add_child(ui_row)
-		var ui_lbl := Label.new()
-		ui_lbl.text = tr("Size: %d%%") % int(round(float(main.ui_scale) * 100.0))
-		ui_lbl.custom_minimum_size = Vector2(130, 0)
-		ui_lbl.add_theme_font_size_override("font_size", 13)
-		ui_row.add_child(ui_lbl)
-		var ui_sl := HSlider.new()
-		ui_sl.min_value = 0.7      # = Main.UI_SCALE_MIN (set_ui_scale всё равно клампит)
-		ui_sl.max_value = 1.4      # = Main.UI_SCALE_MAX
-		ui_sl.step = 0.05
-		ui_sl.value = float(main.ui_scale)
-		ui_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		ui_sl.value_changed.connect(func(v: float) -> void:
-			ui_lbl.text = tr("Size: %d%%") % int(round(v * 100.0))
-			var mn: Node = get_node_or_null("/root/Main")
-			if mn and mn.has_method("set_ui_scale"):
-				mn.set_ui_scale(v))
-		ui_row.add_child(ui_sl)
-
-		var ui_hint := Label.new()
-		ui_hint.text = tr("Size of buttons/panels. The base already adapts to the screen on its own.")
-		ui_hint.add_theme_font_size_override("font_size", 12)
-		ui_hint.modulate = Color(1, 1, 1, 0.55)
-		_extra_vb.add_child(ui_hint)
-
-	# THE PLAYER'S OWN LAYOUT: the garage closes and a frame lies over every control a thumb
-	# reaches (hud.start_layout_edit); DONE keeps the places, RESET puts them back.
-	var move_btn := Button.new()
-	move_btn.text = tr("Move controls")
-	move_btn.add_theme_font_size_override("font_size", 14)
-	move_btn.pressed.connect(_on_move_controls)
-	_extra_vb.add_child(move_btn)
-	var move_hint := Label.new()
-	move_hint.text = tr("Put Attack, Build, the map and the rest where your thumbs reach them.")
-	move_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	move_hint.add_theme_font_size_override("font_size", 12)
-	move_hint.modulate = Color(1, 1, 1, 0.55)
-	_extra_vb.add_child(move_hint)
-	var fps_btn := CheckButton.new()
-	fps_btn.text = tr("Show FPS")
-	fps_btn.button_pressed = G.show_fps
-	fps_btn.add_theme_font_size_override("font_size", 14)
-	fps_btn.toggled.connect(_on_show_fps)
-	_extra_vb.add_child(fps_btn)
-	var fps_hint := Label.new()
-	fps_hint.text = tr("A small counter in the bottom-right corner, in the game and in the garage.")
-	fps_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	fps_hint.add_theme_font_size_override("font_size", 12)
-	fps_hint.modulate = Color(1, 1, 1, 0.55)
-	_extra_vb.add_child(fps_hint)
-
-	# — СТРОЙКА — вкус, а не правило: одному подобранный блок нужен сразу в руке и на машине,
-	# другой подбирает мусор по дороге и не хочет каждый раз выпадать из езды.
-	_extra_header("— BUILDING —")
-	var pick := CheckButton.new()
-	pick.text = tr("Picking up a block opens assembly")
-	pick.button_pressed = G.build_on_pickup
-	pick.add_theme_font_size_override("font_size", 14)
-	pick.toggled.connect(func(on: bool) -> void: G.build_on_pickup = on; G.save_settings())
-	_extra_vb.add_child(pick)
-	var pick_hint := Label.new()
-	pick_hint.text = tr("Off — the block stays in hand, assembly opens by its button.")
-	pick_hint.add_theme_font_size_override("font_size", 12)
-	pick_hint.modulate = Color(1, 1, 1, 0.55)
-	_extra_vb.add_child(pick_hint)
-
-	# — КАМЕРА — (перенесено из HUD: управление камерой настраивается здесь, в гараже)
-	_extra_header("— CAMERA —")
-	_extra_vb.add_child(_cam_slider(tr("Rotation sensitivity"), G.cam_look_sens,
-			func(v): G.cam_look_sens = v; G.save_settings()))
-	_extra_vb.add_child(_cam_slider(tr("Zoom sensitivity"), G.cam_zoom_sens,
-			func(v): G.cam_zoom_sens = v; G.save_settings()))
-	var inv := CheckButton.new()
-	inv.text = tr("Invert vertical")
-	inv.button_pressed = G.cam_invert_y
-	inv.add_theme_font_size_override("font_size", 14)
-	inv.toggled.connect(func(on: bool) -> void: G.cam_invert_y = on; G.save_settings())
-	_extra_vb.add_child(inv)
-
-	# — MACHINE — giving up the machine you are in: behind a question, like everything here that
-	# cannot be undone (see the reset note below).
-	_extra_header("— MACHINE —")
-	var give_up := Button.new()
-	give_up.text = tr("Surrender")
-	give_up.add_theme_font_size_override("font_size", 14)
-	give_up.pressed.connect(_ask_surrender)
-	_extra_vb.add_child(give_up)
-	var give_hint := Label.new()
-	give_hint.text = tr("Blows up this machine's cabin: its blocks fall where it stands, and you start again in a new cabin.")
-	give_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	give_hint.add_theme_font_size_override("font_size", 12)
-	give_hint.modulate = Color(1, 1, 1, 0.55)
-	_extra_vb.add_child(give_hint)
-
-	# СБРОСА ЗДЕСЬ НЕТ. Он переехал в меню, к слотам, и это его место: там видно, ЧТО именно
-	# сбрасывается (мир отдельно, прохождение отдельно), а удаление требует удержания. Кнопка «в
-	# один тап, необратимо» посреди игровых настроек — это только способ потерять мир случайно.
-	#
-	# ВЫХОД В МЕНЮ — единственный способ сменить слот, не перезапуская приложение. Без него
-	# три мира есть, а попасть из одного в другой нельзя.
-	var menu_btn := Button.new()
-	menu_btn.text = tr("Main menu (switch world)")
-	menu_btn.add_theme_font_size_override("font_size", 14)
-	menu_btn.pressed.connect(_to_main_menu)
-	_extra_vb.add_child(menu_btn)
+## Code-set captions do not translate themselves: the tab row is rebuilt, the rest follows on its
+## next draw.
+func _on_settings_lang() -> void:
+	_fit_tab_row()
 
 func _on_show_fps(on: bool) -> void:
 	G.show_fps = on
