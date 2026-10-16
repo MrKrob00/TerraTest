@@ -18,7 +18,7 @@ render_mode diffuse_lambert, specular_disabled;
 // only, never commit one on). Each cuts one block, so the frame time it gives back is that block's cost:
 // #define PROBE_NO_DETAIL      // the detail fetch and its ~20 ALU a pixel
 // #define PROBE_NO_LIFT        // the grass/snow lift: hashes and the trample fetch in the VERTEX stage
-#define PROBE_NO_TONE        // the slow tone noise (vnoise, 4 hashes a vertex)
+// #define PROBE_NO_TONE        // the slow tone noise (vnoise, 4 hashes a vertex)
 // #define PROBE_NO_HAZE        // the haze written to FOG
 // #define PROBE_FLAT_VERTEX    // the whole vertex colour block: v_* constant, only position + haze
 group_uniforms Texture;
