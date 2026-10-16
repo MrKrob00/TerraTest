@@ -2439,7 +2439,8 @@ func _supply_1(q: Dictionary) -> void:
 		var sp0: Node = get_node_or_null("/root/Main/EnemySpawner")
 		var guard: int = int(sp0.preset_below_cap(0)) if sp0 != null and sp0.has_method("preset_below_cap") else 6
 		if is_instance_valid(orb_n):
-			_ev_spawn(key, (orb_n as Node3D).global_position, [guard], 1, _player(), false)
+			_ev_spawn(key, (orb_n as Node3D).global_position, [guard], 1, _player())
+			_supply_place(key, (orb_n as Node3D).global_position)
 		_supply_t[key] = CACHE_TIME
 		_supply_warned[key] = false
 	elif _supply_trap.get(key, false) and not _ev_mobs.has(key):
@@ -2450,10 +2451,68 @@ func _supply_1(q: Dictionary) -> void:
 			presets.append(int(sp.preset_below_cap(1 if two else 0)) if sp != null \
 					and sp.has_method("preset_below_cap") else 6)
 		_ev_spawn(key, at, presets, 1, _player())
+		_supply_place(key, at)
 		Dialogue.say("System", tr("It was bait. Contacts dropping on the drop."))
 	elif not _ev_mobs.has(key):
 		_ev_mobs[key] = []                    # nobody guards it: "all dead" is true from the start
 	Q.report(String(q["event"]), 1)
+
+## A SUPPLY DROP'S ENEMIES LAND ROUND THE DROP, WITHIN SUPPLY_MOB_MAX OF IT (the player's rule: 40 m).
+## The hidden cache's guard used to go through `_ev_spawn(.., defer = false)`, whose `clear_point`
+## carries a party PLAYER_CLEAR (200 m) + ring + pad out from the player - and the player is standing
+## at the mark when it is called, so the guard dropped 225 m off. Now both kinds go through the
+## deferred party (`_party_tick` spawns with `arrival`, which skips `clear_point`) and each member's
+## point is picked here: SUPPLY_MOB_MIN..MAX from the drop, SUPPLY_MOB_CLEAR from every machine of
+## the player's, the side away from the player tried first.
+const SUPPLY_MOB_MIN := 14.0
+const SUPPLY_MOB_MAX := 38.0
+const SUPPLY_MOB_CLEAR := 16.0
+
+func _supply_place(key: String, center: Vector3) -> void:
+	if not _ev_party.has(key):
+		return
+	var own: Array = []
+	for m in _own_machines():
+		if is_instance_valid(m) and m is Node3D:
+			own.append((m as Node3D).global_position)
+	var base_ang: float = randf() * TAU
+	if not own.is_empty():
+		var away := Vector2(center.x - own[0].x, center.z - own[0].z)
+		if away.length_squared() > 1.0:
+			base_ang = atan2(away.y, away.x)
+	var taken: Array = []
+	var members: Array = _ev_party[key]["members"]
+	for i in members.size():
+		var m: Dictionary = members[i]
+		if bool(m["out"]) or bool(m["dead"]):
+			continue
+		var best := Vector3(cos(base_ang), 0.0, sin(base_ang)) * SUPPLY_MOB_MAX
+		var found := false
+		for ring in 3:
+			var r: float = lerpf(SUPPLY_MOB_MAX * 0.75, SUPPLY_MOB_MIN, float(ring) / 2.0)
+			for k in 12:
+				var a: float = base_ang + float((k + 1) / 2) * (PI / 6.0) * (1.0 if k % 2 == 1 else -1.0) \
+						+ float(i) * 0.9
+				var off := Vector3(cos(a) * r, 0.0, sin(a) * r)
+				var p: Vector3 = center + off
+				var ok := true
+				for o in own:
+					if Vector2(p.x - o.x, p.z - o.z).length_squared() < SUPPLY_MOB_CLEAR * SUPPLY_MOB_CLEAR:
+						ok = false
+						break
+				for t in taken:
+					if (p - t).length_squared() < 64.0:
+						ok = false
+						break
+				if ok:
+					best = off
+					found = true
+					break
+			if found:
+				break
+		taken.append(center + best)
+		m["at"] = center
+		m["off"] = best
 
 func _supply_orb(key: String, at: Vector3) -> void:
 	var host: Node = get_tree().current_scene

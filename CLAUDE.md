@@ -2191,6 +2191,13 @@ project: read it before claiming how anything works.
   way in (the loading overlay): the whole run, a pause at 3 s (no save written, the start laid on
   landing), a stall at 3 s (the start laid after `INTRO_RUN`), and no script (laid at once, 8 blocks).
 
+- **A SUPPLY DROP'S ENEMIES LAND WITHIN 40 M OF THE DROP** (`quest_arcs._supply_place`, the player's
+  rule). Both the bait and the hidden cache's guard go through the deferred party (`_party_tick`
+  spawns with `arrival`, no `clear_point`) on points `SUPPLY_MOB_MIN..MAX` from the orb and
+  `SUPPLY_MOB_CLEAR` from the player's machines. The guard used `defer = false`, and `clear_point`
+  carried it PLAYER_CLEAR + ring + pad off the player standing at the mark: measured 215 m from the
+  drop before, 28.5 m after.
+
 ### The proving ground
 
 - IT IS THE SAME WORLD, NOT A SECOND SCENE. `node_3d.tscn` with `G.proving_ground` raised: flat
