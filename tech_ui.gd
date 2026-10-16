@@ -27,6 +27,21 @@ var _shop_filter: String = "all"
 ## Цвет ценника на распродаже. Тёплый, а не зелёный: зелёный в этой игре занят ремонтом и
 ## «хватает денег», и скидка в нём читалась бы как «можно купить», а не как «стало дешевле».
 const SALE_COL := Color(1.0, 0.82, 0.22)
+## THE SHOP'S DAY ON SCREEN (the player's call): a strip over the list with the time to the next
+## restock (`G.shop_sale_seconds_left`), a bar that empties over the day and today's counts, and the
+## list in three sections - on sale, today only (a stock-limited block, with how many are left), always
+## in stock. The window IS the shop's rule, and a flat list hid which blocks would be gone tomorrow.
+const STOCK_COL := Color(0.55, 0.85, 0.9)
+const POOR_COL := Color(0.95, 0.5, 0.45)
+const HEAD_H := 24.0
+enum { SHOP_SALE, SHOP_TODAY, SHOP_ALWAYS }
+var _shop_head: PanelContainer = null
+var _shop_cap: Label = null
+var _shop_time: Label = null
+var _shop_bar: DayBar = null
+var _shop_info: Label = null
+var _shop_sec: int = -1
+var _heads: Array = []                    # section rows in the grid, pooled like the slots
 var _last_slot_side: float = 0.0        # чтобы пересобирать сетку только при реальной смене ширины
 var _filter_col: VBoxContainer = null     # колонка кнопок слева от сетки (видна в SHOP)
 var _filter_buttons: Dictionary = {}
@@ -62,6 +77,7 @@ func _ready() -> void:
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
+	_build_shop_head()
 	_build_stats_panel()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
@@ -163,6 +179,113 @@ func _build_filter_column() -> void:
 		_codex_col.add_child(cb)
 		_codex_buttons[k[0]] = cb
 
+## The strip over the shop's list: "Restock in 12:34", the day's bar, today's counts. Shown on the
+## SHOP tab only (`_update_shop_head`); built once, like the filter column.
+func _build_shop_head() -> void:
+	var vb: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB")
+	if vb == null:
+		return
+	_shop_head = PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.16, 0.19, 0.95)
+	sb.border_color = Color(0.35, 0.72, 0.78, 0.5)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 12.0
+	sb.content_margin_right = 12.0
+	sb.content_margin_top = 7.0
+	sb.content_margin_bottom = 8.0
+	_shop_head.add_theme_stylebox_override("panel", sb)
+	_shop_head.tooltip_text = tr("The shop restocks once a game day. Blocks researched today join at the next restock.")
+	_shop_head.visible = false
+	vb.add_child(_shop_head)
+	vb.move_child(_shop_head, 0)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shop_head.add_child(col)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(row)
+	_shop_cap = Label.new()
+	_shop_cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_shop_cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_shop_cap.add_theme_font_size_override("font_size", 13)
+	_shop_cap.add_theme_color_override("font_color", Color(0.55, 0.78, 0.84))
+	_shop_cap.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_shop_cap.clip_text = true
+	row.add_child(_shop_cap)
+	_shop_time = Label.new()
+	_shop_time.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_shop_time.add_theme_font_size_override("font_size", 22)
+	row.add_child(_shop_time)
+	_shop_bar = DayBar.new()
+	_shop_bar.custom_minimum_size = Vector2(0.0, 6.0)
+	_shop_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(_shop_bar)
+	_shop_info = Label.new()
+	_shop_info.add_theme_font_size_override("font_size", 12)
+	_shop_info.add_theme_color_override("font_color", Color(0.6, 0.8, 0.85, 0.9))
+	_shop_info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_shop_info.clip_text = true
+	col.add_child(_shop_info)
+
+## The countdown, set only when its second changes; on the proving ground the shop is everything.
+func _update_shop_head(force: bool = false) -> void:
+	if _shop_head == null:
+		return
+	_shop_head.visible = _tab == TAB_SHOP
+	if not _shop_head.visible:
+		return
+	if G.proving_ground:
+		_shop_cap.text = tr("Proving ground: everything in stock")
+		_shop_time.visible = false
+		_shop_bar.visible = false
+		return
+	var left: float = G.shop_sale_seconds_left()
+	var sec: int = int(ceil(left))
+	if sec == _shop_sec and not force:
+		return
+	_shop_sec = sec
+	_shop_cap.text = tr("Restock in")
+	_shop_time.visible = true
+	_shop_bar.visible = true
+	_shop_time.text = "%d:%02d" % [sec / 60, sec % 60]
+	var last: bool = sec <= 60                   # the last minute warms up: tomorrow is close
+	_shop_time.add_theme_color_override("font_color", SALE_COL if last else Color(0.86, 0.97, 1.0))
+	_shop_bar.frac = clampf(left / G.SHOP_DAY, 0.0, 1.0)
+	_shop_bar.warm = last
+	_shop_bar.queue_redraw()
+
+## Today's counts under the countdown: the whole window, not what the filter shows.
+func _update_shop_counts() -> void:
+	if _shop_info == null:
+		return
+	var n := 0
+	var sale := 0
+	for bt in G.BLOCK_META:
+		if G.shop_count(int(bt)) == 0:
+			continue
+		n += 1
+		if G.shop_sale_pct(int(bt)) > 0:
+			sale += 1
+	_shop_info.text = tr("In stock today: %d · on sale: %d") % [n, sale]
+
+## Which section of the shop a row stands in.
+func _shop_group(it: Dictionary) -> int:
+	if G.shop_sale_pct(int(it["type"])) > 0:
+		return SHOP_SALE
+	if int(it.get("left", -1)) > 0:
+		return SHOP_TODAY
+	return SHOP_ALWAYS
+
+func _by_shop_order(a: Dictionary, b: Dictionary) -> bool:
+	var ga: int = _shop_group(a)
+	var gb: int = _shop_group(b)
+	if ga != gb:
+		return ga < gb
+	return _by_block_order(a, b)
+
 func _set_shop_filter(key: String) -> void:
 	_shop_filter = key
 	Q.report("garage_filter", 1)          # шаг обучения «попробовать фильтр категорий»
@@ -223,7 +346,7 @@ func _load_items() -> void:
 				"was": int(_prices[block_type]),
 				"left": left,
 			})
-		_items.sort_custom(_by_block_order)
+		_items.sort_custom(_by_shop_order)
 		return
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
@@ -711,17 +834,34 @@ func _rebuild_grid(filter: String) -> void:
 		return
 	_last_slot_side = _slot_side()
 	if _tab == TAB_BUILDS:
+		_hide_heads_from(0)
 		_build_builds_tab()
 		return
 	var side := _slot_side()
 	var f := filter.strip_edges().to_lower()
+	var seq: Array = []
 	var shown := 0
+	var heads := 0
+	var group := -1
 	for it in _items:
 		if f != "" and not str(it["name"]).to_lower().contains(f):
 			continue
-		_fill_item_slot(_slot_at(shown), it, side)
+		if _tab == TAB_SHOP and _shop_group(it) != group:
+			group = _shop_group(it)
+			var h: SectionHead = _head_at(heads)
+			_fill_head(h, group)
+			seq.append(h)
+			heads += 1
+		var s: Slot = _slot_at(shown)
+		_fill_item_slot(s, it, side)
+		seq.append(s)
 		shown += 1
 	_hide_slots_from(shown)
+	_hide_heads_from(heads)
+	_order_grid(seq)
+	if _tab == TAB_SHOP:
+		_update_shop_counts()
+		_update_shop_head(true)
 	if shown > 0:
 		_set_empty_text("")
 	elif not _items.is_empty():
@@ -753,6 +893,8 @@ class Slot extends Button:
 	var name_lbl: Label = null        # имя детали (у самой кнопки текст пустой)
 	var corner: Label = null
 	var sale: Label = null            # процент скидки, отдельной строкой в правом верхнем углу
+	var stock: Label = null           # "3 left" under the sale corner: a stock-limited block
+	var accent: ColorRect = null      # the warm stripe down the left edge of a row on sale
 	var pencil: Control = null
 
 var _pool: Array = []
@@ -770,6 +912,43 @@ func _slot_at(i: int) -> Slot:
 func _hide_slots_from(n: int) -> void:
 	for i in range(n, _pool.size()):
 		(_pool[i] as Control).visible = false
+
+## A section row of the shop, pooled like the slots.
+func _head_at(i: int) -> SectionHead:
+	while _heads.size() <= i:
+		var h := SectionHead.new()
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_heads.append(h)
+		_grid.add_child(h)
+	return _heads[i]
+
+func _fill_head(h: SectionHead, group: int) -> void:
+	h.custom_minimum_size = Vector2(_row_w(), HEAD_H)
+	match group:
+		SHOP_SALE:
+			h.text = tr("On sale")
+			h.col = SALE_COL
+		SHOP_TODAY:
+			h.text = tr("Today only")
+			h.col = STOCK_COL
+		_:
+			h.text = tr("Always in stock")
+			h.col = Color(0.6, 0.72, 0.76)
+	h.visible = true
+	h.queue_redraw()
+
+func _hide_heads_from(n: int) -> void:
+	for i in range(n, _heads.size()):
+		(_heads[i] as Control).visible = false
+
+## THE GRID SHOWS ITS CHILDREN IN TREE ORDER, so a rebuild puts what it filled first, in its order.
+## The shop interleaves section rows with the slots, and without this the next tab would show the
+## pooled slots in the order the shop left them.
+func _order_grid(seq: Array) -> void:
+	for i in seq.size():
+		var n: Node = seq[i]
+		if n.get_index() != i:
+			_grid.move_child(n, i)
 
 func _new_slot() -> Slot:
 	var s := Slot.new()
@@ -825,6 +1004,27 @@ func _new_slot() -> Slot:
 	s.sale.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	s.sale.visible = false
 	s.add_child(s.sale)
+	s.stock = Label.new()
+	s.stock.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	s.stock.offset_left = -170.0
+	s.stock.offset_top = -16.0
+	s.stock.offset_right = -62.0
+	s.stock.offset_bottom = -2.0
+	s.stock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	s.stock.add_theme_font_size_override("font_size", 11)
+	s.stock.add_theme_color_override("font_color", STOCK_COL)
+	s.stock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.stock.visible = false
+	s.add_child(s.stock)
+	s.accent = ColorRect.new()
+	s.accent.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	s.accent.offset_top = 3.0
+	s.accent.offset_bottom = -3.0
+	s.accent.offset_right = 3.0
+	s.accent.color = SALE_COL
+	s.accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.accent.visible = false
+	s.add_child(s.accent)
 	# Карандашик — подсказка «у слота есть меню», не кнопка: нажатия пропускает насквозь.
 	s.pencil = PencilIcon.new()
 	s.pencil.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -886,6 +1086,8 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
 	s.corner.remove_theme_color_override("font_color")
 	s.sale.visible = false
+	s.stock.visible = false
+	s.accent.visible = false
 	s.pencil.visible = false
 	s.visible = true
 
@@ -915,21 +1117,29 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		s.modulate = Color(1, 1, 1, 0.45)
 		return
 	s.action = &"buy"
-	# A stock-limited block shows how many are left today; a basic one is endless.
-	var stock: String = "  ×%d" % int(it.get("left", -1)) if int(it.get("left", -1)) > 0 else ""
+	s.corner.text = "%d$" % s.price
+	# A stock-limited block says how many are left today, under the sale corner; a basic one is
+	# endless and says nothing - its section does.
+	var left: int = int(it.get("left", -1))
+	if left > 0:
+		s.stock.text = tr("%d left") % left
+		s.stock.visible = true
 	var off: int = G.shop_sale_pct(s.arg)
 	if off > 0:
 		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой внизу, процент мелким сверху
 		# справа, старая цена — в подсказке. Процент обязателен: без него игрок не отличит
 		# скидку от блока, который просто дешевле соседнего.
-		s.corner.text = "%d$" % s.price + stock
 		s.corner.add_theme_color_override("font_color", SALE_COL)
 		s.sale.text = "−%d%%" % off
 		s.sale.visible = true
+		s.accent.visible = true
 		s.tooltip_text = tr("On sale: %d$ instead of %d$") % [s.price, int(it.get("was", s.price))]
-	else:
-		s.corner.text = "%d$" % s.price + stock
 	s.disabled = G.money < s.price
+	if s.disabled:
+		# NOT ENOUGH MONEY READS ON THE PRICE: a disabled Button dims its own box, not the labels
+		# in it, so the row looked buyable and the tap did nothing.
+		s.corner.add_theme_color_override("font_color", POOR_COL)
+		s.modulate = Color(1, 1, 1, 0.72)
 
 # Надпись «пусто» тоже переиспользуем: пустая строка — просто прячем.
 func _set_empty_text(text: String) -> void:
@@ -956,6 +1166,7 @@ func _build_builds_tab() -> void:
 		_fill_build_slot(_slot_at(n), str(build_name), side)
 		n += 1
 	_hide_slots_from(n)
+	_order_grid(_pool.slice(0, n))
 	_set_empty_text("")
 
 func _fill_build_slot(s: Slot, build_name: String, side: float) -> void:
@@ -1000,6 +1211,8 @@ func _on_slot_gui_input(event: InputEvent, s: Slot) -> void:
 			_hold_name = ""
 
 func _process(_delta: float) -> void:
+	if visible and _tab == TAB_SHOP:
+		_update_shop_head()
 	# Держим палец на слоте дольше HOLD_MS → открываем меню (и гасим последующее «применить»).
 	if _hold_name != "" and Time.get_ticks_msec() - _hold_start >= HOLD_MS:
 		var n := _hold_name
@@ -1028,6 +1241,34 @@ func _on_build_menu_id(id: int) -> void:
 		0: _load_build(_menu_target)
 		1: _ask_rename_build(_menu_target)
 		2: _ask_delete_build(_menu_target)
+
+## The shop's day as a bar that empties toward the restock; the last minute turns it warm.
+class DayBar extends Control:
+	var frac: float = 1.0
+	var warm: bool = false
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.07, 0.09, 0.9))
+		var w: float = size.x * frac
+		if w >= 1.0:
+			var col := Color(1.0, 0.82, 0.22) if warm else Color(0.35, 0.78, 0.86)
+			draw_rect(Rect2(Vector2.ZERO, Vector2(w, size.y)), col)
+			draw_rect(Rect2(Vector2.ZERO, Vector2(w, 1.0)), col.lightened(0.35))
+
+## A section row of the shop's list: its name in the section's colour and a rule running on to the
+## right edge, drawn - a Label cannot draw the rule, and a separator node beside it is a second row.
+class SectionHead extends Control:
+	var text: String = ""
+	var col: Color = Color.WHITE
+	const FS := 12
+	func _draw() -> void:
+		var font: Font = get_theme_default_font()
+		var cap: String = text.to_upper()
+		var base: float = size.y - 6.0
+		draw_string(font, Vector2(2.0, base), cap, HORIZONTAL_ALIGNMENT_LEFT, -1, FS, col)
+		var tw: float = font.get_string_size(cap, HORIZONTAL_ALIGNMENT_LEFT, -1, FS).x
+		var y: float = base - FS * 0.35
+		if size.x - tw > 20.0:
+			draw_line(Vector2(tw + 10.0, y), Vector2(size.x - 2.0, y), Color(col.r, col.g, col.b, 0.35), 1.0)
 
 # Иконки рисуем в коде: шрифт проекта не рендерит эмодзи (пустые кнопки — уже проходили).
 class PencilIcon extends Control:
@@ -1264,6 +1505,7 @@ func _select_tab(idx: int) -> void:
 	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
+	_update_shop_head(true)
 	if _filter_col:
 		# В СПРАВОЧНИКЕ ФИЛЬТРА БОЛЬШЕ НЕТ: там теперь граф, а не сетка плиток, и «показать только
 		# оружие» в дереве означало бы дерево с выломанной серединой — связи ведут через скрытые

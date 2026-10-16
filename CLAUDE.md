@@ -2782,6 +2782,16 @@ project: read it before claiming how anything works.
   progress save ("shop"), so a reload does not reroll it; the day runs only while the world is up
   (in the menu a restock would write progress into a slot about to be deleted). The day's three
   discounts fall on blocks in the window. The proving ground's shop is everything, endless.
+  **THE SHOP SHOWS ITS DAY** (`tech_ui._build_shop_head` / `_update_shop_head`, the player's call): a
+  strip over the list - "Restock in 12:34" from `G.shop_sale_seconds_left`, set only when the second
+  changes, a bar that empties over `SHOP_DAY` and turns warm in the last minute, and today's counts
+  over the WHOLE window, not the filter. The list stands in three SECTIONS (`_shop_group`: on sale,
+  today only - a stock-limited block, with "N left" under its price - and always in stock), as rows
+  of their own pooled like the slots (`SectionHead`, `_head_at`). THE GRID DRAWS ITS CHILDREN IN TREE
+  ORDER, so every rebuild puts what it filled first (`_order_grid`), or the next tab would show the
+  pooled slots in the order the shop's sections left them. A row the money does not cover shows its
+  price red and dims (a disabled Button dims its box, not the labels in it). Checked on the real
+  driver in English and Russian, the last minute included.
 
 ### Look and light
 
