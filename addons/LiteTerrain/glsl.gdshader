@@ -148,7 +148,9 @@ uniform vec4 sun_shadow_uv2 = vec4(0.0);
 uniform float sun_shadow_strength = 0.0;
 // x, y, z: how far past its hand-over line a vertex stands in window 0, 1, 2 (< 0: that window);
 // w: the outermost window's fade, 1 inside and 0 past its edge
-varying vec4 v_shsel;
+// mediump: the three are metres used for their SIGN only (fp16 holds +-65504 m, and a sign near the
+// line is decided at a few mm either way), w a 0..1 fade
+varying mediump vec4 v_shsel;
 // A window with another after it hands over SH_BAND m inside its edge (sun_shadows.SH_BAND), the line
 // wandering SH_DITHER m by a hash a vertex, so the change of sharpness is no straight seam. The last
 // window fades out over the last SH_FADE of its half, as the one window always did.
@@ -156,19 +158,20 @@ const float SH_BAND = 8.0;
 const float SH_DITHER = 6.0;
 const float SH_FADE = 1.0 / 6.0;
 #endif
-varying mediump float v_haze;
+// THE PACKED VARYINGS: x the haze (strength in), y the detail fade (v_det) - one mediump vec2
+varying mediump vec2 v_hd;
 // THE DETAIL IS DRAWN ONLY OUT TO DETAIL_FAR, faded over DETAIL_FADE before it (it ran to the solid
 // haze; 80 m first, doubled at the player's call once the ground was painted), on the ground's own plane everywhere (canyon walls streak; three planes were a pick a
 // pixel), and there is no per-pixel colour hash - the player's cuts after the phone's probe put the
 // detail block at ~7 ms, tried as switches and kept on.
 const float DETAIL_FAR = 160.0;
 const float DETAIL_FADE = 40.0;
-varying mediump float v_det;
+
 
 // MEDIUMP WHERE IT IS A COLOUR (the phone's GPU, Adreno 610, runs half floats at twice the rate and
 // stores half the varying memory per vertex in its binning pass): a colour ends 8-bit, and fp16 is
-// 11 bits of mantissa, so the picture cannot tell. World positions (v_wpos) and the shadow windows'
-// metres (v_shsel) stay highp - the detail's uv and the windows' signs need them.
+// 11 bits of mantissa, so the picture cannot tell. World positions
+// stay highp in v_wpos - the detail uv needs it; v_shsel is mediump (signs only).
 // THE BASE COLOUR RIDES IN THE DAB PAIR (v_bd = base x dark, v_bl = base x light): the fragment's
 // base * mix(pd, pl, b) is mix(base*pd, base*pl, b), and past DETAIL_FAR both are 1 x base. Three
 // floats a vertex fewer; the products are interpolated instead of the factors - measured the same
@@ -178,8 +181,8 @@ varying mediump float v_det;
 // the cracks as 1 + x + y * R (the salt flat, the rock's facets), the patches.
 varying mediump vec3  v_bd;
 varying mediump vec3  v_bl;
-varying mediump vec2  v_rip;   // the sand and the snow weight; their tints are constants (RIP_SAND / RIP_SNOW), linear, so exact
-varying mediump vec2  v_crack;
+// xy the ripples' sand and snow weight (tints RIP_SAND / RIP_SNOW are constants: linear, so exact), zw the cracks
+varying mediump vec4  v_rc;
 varying vec2  v_wpos;
 const vec3 RIP_SAND = vec3(0.24, 0.30, 0.40);
 const vec3 RIP_SNOW = vec3(0.22, 0.16, 0.06);         // world x, z - the detail fetch and the shadow lookup
@@ -240,8 +243,8 @@ void vertex() {
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
-    v_haze = smoothstep(haze_range.x, haze_range.y, ground_d) * haze_range.z;   // the strength folded in: linear, so exact
-    v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
+    float v_haze = smoothstep(haze_range.x, haze_range.y, ground_d) * haze_range.z;   // the strength folded in: linear, so exact
+    float v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
 #ifdef FAST_GROUND
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
@@ -337,11 +340,11 @@ void vertex() {
     float bare = (1.0 - canyon) * (1.0 - rock_t) * (1.0 - salt);
     float sand_w = clamp((1.0 - biome_grass) * (1.0 - snow) * bare, 0.0, 1.0);
     float snow_w = clamp(snow * (1.0 - rock_t), 0.0, 1.0);
-    v_rip = vec2(sand_w, snow_w) * (ripple_strength * v_det);
+    vec2 v_rip = vec2(sand_w, snow_w) * (ripple_strength * v_det);
     // CRACKS: the salt flat's deep ones, the rock's light facets (mix(lo, 1.08, R) each, as 1 + x + y R)
     float salt_w = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
     float rock_w = rock_t * mix(1.0, 0.5, cliff_c) * rock_facets;
-    v_crack = (salt_w * vec2(0.35 - 1.0, 1.08 - 0.35) + rock_w * vec2(0.62 - 1.0, 1.08 - 0.62)) * v_det;
+    vec2 v_crack = (salt_w * vec2(0.35 - 1.0, 1.08 - 0.35) + rock_w * vec2(0.62 - 1.0, 1.08 - 0.62)) * v_det;
     // THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL, so two nodes meeting on a seam
     // lift their shared vertices alike whatever their levels and whenever each was built. It used to
     // be the near level only, with the border rows flagged flat where the neighbour was coarser -
@@ -382,10 +385,15 @@ void vertex() {
 #ifdef PROBE_FLAT_VERTEX
     v_bd = vec3(0.5); v_bl = vec3(0.5); v_rip = vec2(0.0); v_crack = vec2(0.0);
 #endif
+    v_rc = vec4(v_rip, v_crack);
+    v_hd = vec2(v_haze, v_det);
 }
 
 void fragment() {
     mediump vec3 base_col = v_bd;
+    mediump float v_det = v_hd.y;
+    mediump vec2 v_rip = v_rc.xy;
+    mediump vec2 v_crack = v_rc.zw;
 
 #ifndef PROBE_NO_DETAIL
     // The detail masks, one fetch on the ground's plane (DETAIL_FAR above); every strength comes
@@ -421,6 +429,6 @@ void fragment() {
 
     // the haze last, over everything: the air between the camera and the surface
 #ifndef PROBE_NO_HAZE
-    FOG = vec4(world_haze.rgb, v_haze);
+    FOG = vec4(world_haze.rgb, v_hd.x);
 #endif
 }
