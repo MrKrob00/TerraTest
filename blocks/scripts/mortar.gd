@@ -43,7 +43,7 @@ func _init() -> void:
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	homing_deg = 6.0         # a lobbed shell trims its heading toward the target, not its arc
 	homing_flat = true
-	turn_speed = 12.0        # deg/s (WeaponBlock._turn_to): the hull aims it; the pack only trims and lifts
+	turn_speed = 36.0        # deg/s (WeaponBlock._turn_to): the hull aims it; the pack only trims and lifts
 
 func _ready() -> void:
 	super._ready()

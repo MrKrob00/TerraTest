@@ -16,7 +16,7 @@ class_name RocketLauncher
 func _init() -> void:
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	homing_deg = 25.0        # TerraTech's rockets home in part (BulletSim._steer)
-	turn_speed = 18.0        # deg/s (WeaponBlock._turn_to): a full pod
+	turn_speed = 54.0        # deg/s (WeaponBlock._turn_to): a full pod
 
 func _ready() -> void:
 	super._ready()

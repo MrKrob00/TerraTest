@@ -976,8 +976,9 @@ project: read it before claiming how anything works.
   put its whole dps on what it picked at once. Yaw and pitch now move at `turn_speed` deg/s, the
   model follows the PIVOT, and `_handle_fire` holds the shot (timer spent, as for a blocked barrel)
   while the barrel is off. ONE DOOR for the base, laser, rocket launcher and mortar; a subclass sets
-  its rate in `_init` so a Marlit scene can override the export: gun 30, shotgun 25, laser 20,
-  rocket 18, heavy cannon 15, mortar 12; Marlit gun 24, shotgun 20, laser 16, cannon 12, mortar 10.
+  its rate in `_init` so a Marlit scene can override the export: gun 90, shotgun 75, laser 60,
+  rocket 54, heavy cannon 45, mortar 36; Marlit gun 72, shotgun 60, laser 48, cannon 36, mortar 30
+  (all tripled from the first ladder, the player's balance: turrets read as too sluggish).
   THE PLAYER'S SCALE ("about 20 deg/s, as an example"): the first numbers, 45-120 deg/s, put a gun
   on a target a quarter turn away in under a second, and in the game it read as no rate at all. The rest check is "the turn reached its rest" (`_aim_err`), not
   "pivot at zero": THE MORTAR'S PIVOT RESTS AT ITS PARKED ANGLE (`_idle_pitch`, set in `_ready`), or
