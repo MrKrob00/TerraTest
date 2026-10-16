@@ -2806,7 +2806,7 @@ project: read it before claiming how anything works.
   (portrait 104 px, roman grade top-left, `×N` stock top-right, price bar under it, amber bar for a
   sale, padlock + grade when locked). A tap SELECTS; buying is in the right panel, whose machine
   stats step aside while the shop is open (`_shop_v2_show`): portrait, faction and grade, text,
-  `_codex_stats`, crafting comparison from `G.block_recipe` x `G.base_price`, a quantity stepper
+  `_codex_stats` (no crafting comparison - the player's call), a quantity stepper
   bounded by stock and money, and BUY, which calls `_buy` once per unit. One accent: amber.
   **THE SHOP WEARS THE BLOCKS' LOOK** (`tech_ui._plate` / `_row_style`, docs/ART_STYLE.md): dark
   violet-grey metal plates with cut corners (`corner_detail = 1`), no rounded pills, glow or

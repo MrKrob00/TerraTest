@@ -2987,10 +2987,6 @@ func _build_shop_detail() -> void:
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sv_detail.add_child(stats)
 	_sv_d["stats"] = stats
-	var craft := _sv_label(12, SV_DIM)
-	craft.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sv_detail.add_child(craft)
-	_sv_d["craft"] = craft
 	var sep := ColorRect.new()
 	sep.color = Color(0.2, 0.2, 0.24)
 	sep.custom_minimum_size = Vector2(0, 1)
@@ -3231,7 +3227,7 @@ func _sv_fill_detail() -> void:
 		return
 	var it: Dictionary = _sv_item(_sv_sel)
 	var has: bool = not it.is_empty()
-	for k in ["pic", "tag", "name", "desc", "stats", "craft", "price", "was", "stock", "qty",
+	for k in ["pic", "tag", "name", "desc", "stats", "price", "was", "stock", "qty",
 			"minus", "plus", "total", "buy", "why"]:
 		(_sv_d[k] as Control).visible = has
 	(_sv_d["pic"] as Control).get_parent().visible = has
@@ -3248,16 +3244,6 @@ func _sv_fill_detail() -> void:
 	(_sv_d["desc"] as Label).text = tr(String(G.BLOCK_DESC.get(bt, "")))
 	(_sv_d["stats"] as Label).text = _codex_stats(bt)
 	var price: int = int(it["price"])
-	var mat: int = 0
-	var rec: Dictionary = G.block_recipe(bt)
-	for k in rec:
-		mat += G.base_price(String(k)) * int(rec[k])
-	var craft: Label = _sv_d["craft"]
-	if mat > 0:
-		craft.text = tr("Craft instead: materials %d (%s) - the shop asks %+d%%") % [mat,
-				G.recipe_text(rec), int(round((float(price) / float(mat) - 1.0) * 100.0))]
-	else:
-		craft.text = ""
 	(_sv_d["price"] as Label).text = str(price)
 	var off: int = G.shop_sale_pct(bt)
 	(_sv_d["was"] as Label).text = (tr("was %d") % int(it.get("was", price)) + "  −%d%%" % off) if off > 0 else ""
