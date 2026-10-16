@@ -107,17 +107,14 @@ func _notification(what: int) -> void:
 		_save_world()
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()                          # profiler mark (perf.gd)
 	_vehicle_render_tick()                         # machines out of frame are not drawn (EVERY frame)
 	_cull_tick(delta)                              # disable what is behind you (its own, more frequent period)
 	_tick += delta
 	if _tick < 1.0:
-		Perf.mark("world", _pf)
 		return
 	_tick = 0.0
 	_expire_world_blocks()                         # despawn loose blocks older than the TTL
 	_rescue_fallen()                               # a machine fell through the terrain: put it back
-	Perf.mark("world", _pf)
 
 # ── Culling what is BEHIND YOU ───────────────────────────────────────────────
 # A loose block in the world is not only a mesh (the engine already skips drawing it behind the

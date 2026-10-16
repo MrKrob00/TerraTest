@@ -318,9 +318,7 @@ static func _streak_material(src: Mesh, override: Material, k: Kind) -> ShaderMa
 	return sm
 
 func _physics_process(delta: float) -> void:
-	var _pf := Perf.now()
 	_step(delta)
-	Perf.mark("bullets", _pf)
 
 ## THE PICTURE IS WRITTEN ONCE A DRAWN FRAME, NOT ONCE A PHYSICS TICK. Physics runs at 60 Hz, and at
 ## 25 fps a frame holds two or three ticks: every round's transform went to the MultiMesh two or
@@ -329,9 +327,7 @@ func _physics_process(delta: float) -> void:
 func _process(_delta: float) -> void:
 	if _live.is_empty() and _drawn == 0:
 		return
-	var _pf := Perf.now()
 	_draw()
-	Perf.mark("bullet_draw", _pf)
 
 var _drawn: int = 0
 

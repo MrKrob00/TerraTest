@@ -284,7 +284,6 @@ func _light() -> DirectionalLight3D:
 	return get_node_or_null("/root/Main/DirectionalLight3D2") as DirectionalLight3D
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()
 	var cam := get_viewport().get_camera_3d()
 	var light := _light()
 	var map := _map()
@@ -379,12 +378,8 @@ func _process(delta: float) -> void:
 		if rev_ask and c.b_i < 0 and not c.dirty \
 				and rn.shadow_rev_in(c.goal_ref, c.win * 0.5 + CASTER_PAD) != c.rev:
 			c.dirty = true
-	var _pb := Perf.now()
 	_build_tick(rn)
-	Perf.mark("sun_shadows.build", _pb)
-	var _pt := Perf.now()
 	_terrain_tick(map)
-	Perf.mark("sun_shadows.terrain", _pt)
 	for c: Cas in _cas:
 		if c.redraw:
 			c.redraw = false
@@ -413,7 +408,6 @@ func _process(delta: float) -> void:
 		_canvas.queue_redraw()
 		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_push(map, strength)
-	Perf.mark("sun_shadows", _pf)
 
 ## THE KEPT HEIGHTS UNDER A GROUND EDIT ARE ASKED AGAIN (a quest's levelled pad, the edits replayed
 ## on load): a refresh copies what it kept and fetches only what it has not got, so the slope under a
@@ -678,7 +672,7 @@ func _caster_tris(e: Array, org: Vector2, ppm: float, detail: int) -> Array:
 ## A still layer's ground shade, laid off from where it was marched; its trees and veins are the `cast`
 ## child's (`_draw_cast`), drawn over it.
 var fetched_pts := 0                 # heights fetched for the ground shade, summed (the harness reads it)
-var still_us := 0                    # what the still layers took to record, summed (the probe reads it)
+var still_us := 0                    # what the still layers took to record, summed (timing, read by hand)
 func _draw_still(c: Cas) -> void:
 	var t0 := Time.get_ticks_usec()
 	var lo: Vector2 = c.ref - Vector2(c.win, c.win) * 0.5
@@ -745,7 +739,7 @@ func _box_shadow(xf: Transform3D, bb: AABB, g: float) -> PackedVector2Array:
 	return out
 
 var draw_us := 0                     # what the last composite took to record
-var draw_total_us := 0               # and all of them, summed (the probe reads it)
+var draw_total_us := 0               # and all of them, summed (timing, read by hand)
 func _draw_casters() -> void:
 	var t0 := Time.get_ticks_usec()
 	var half: float = WINDOW * 0.5
@@ -980,8 +974,6 @@ func _terrain_tick(map: Node) -> void:
 	var ask: StringName = &"known_height" if map.has_method("known_height") else &"drawn_height"
 	if not rowwise and not map.has_method(ask):
 		return
-	var _tp := Perf.now()
-	var _tk: String = ["sun_shadows.t_begin", "sun_shadows.t_fetch", "sun_shadows.t_land"][_t_phase]
 	match _t_phase:
 		0:
 			for o in _cas.size():
@@ -1047,7 +1039,6 @@ func _terrain_tick(map: Node) -> void:
 				c.t_center = j.center
 				if c.on:
 					c.redraw = true
-	Perf.mark(_tk, _tp)
 
 ## A refresh for cascade `c`: its window round the camera, whole cells over a fixed height grid (a
 ## refresh lands on the same cells, not half a cell off), the heights reaching `march` past it every

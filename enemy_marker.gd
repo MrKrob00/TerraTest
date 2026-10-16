@@ -174,9 +174,7 @@ func _camera_controller() -> Node:
 	return _cc
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()          # profiler mark (perf.gd)
 	_tick_marker(delta)
-	Perf.mark("ui", _pf)
 
 func _tick_marker(delta: float) -> void:
 	var cc: Node = _camera_controller()

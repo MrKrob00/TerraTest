@@ -100,7 +100,7 @@ project: read it before claiming how anything works.
     `vehicle_body_3d.gd`, `enemy_vehicle.gd`, every weapon and `BlockFX` failed to load. So a new
     class is reached through `const X := preload("res://x.gd")` (`MachineBody.MACHINE_BATCH`,
     `BlockFX.LOCK_FRAME`, `WeaponBlock.BULLET_SIM`), and a class naming ITSELF uses `load()` of its
-    own path. Old names (`BlockFX`, `VehicleBlock`, `Perf`) are in every cache already.
+    own path. Old names (`BlockFX`, `VehicleBlock`) are in every cache already.
 18. There are NO HEIGHT FILES. The ground is the seed and nothing else, so there is nothing to bake,
     nothing to ship and nothing to go stale against a save.
 
@@ -2571,9 +2571,8 @@ project: read it before claiming how anything works.
 - **THE FPS COUNTER IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A CANVAS LAYER OF ITS OWN**
   (`hud._fps_lbl`, `FPS_LAYER` 90; the player's call): it was a 48 px number in the top middle inside
   the HUD, which the garage - a child of the HUD added last - covered. Over everything it shows in the
-  garage too; `G.show_fps` (SETTINGS -> GRAPHICS, kept in `settings.json`) hides it. A tap
-  still opens the profiler, except over the garage, where it lets taps through (`MOUSE_FILTER_IGNORE`
-  while the garage is open). The text is set every `FPS_EVERY` and only when the number changed.
+  garage too; `G.show_fps` (SETTINGS -> GRAPHICS, kept in `settings.json`) hides it. It is a
+  readout only (`MOUSE_FILTER_IGNORE`): the profiler panel a tap on it used to open is gone. The text is set every `FPS_EVERY` and only when the number changed.
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
   `DragWindow.attach(window, handle, id)` — and it owns the drag, the remembered place
@@ -2951,8 +2950,9 @@ project: read it before claiming how anything works.
   picture (`POST_SUN_DAY` 0.5, `POST_SUN_LOW` 0.37 at dusk and night): noon meadow 76 against 74, a
   block 106 against 108, dusk within ~5, night within ~2. The same measurement contradicts the probe
   entry's reading that the shadowed directional rides inside the base pass.
-- **THE DEVICE MEASURES ITS OWN FRAME, LAYER BY LAYER** (`frame_probe.gd`, PROBE on the profiler
-  panel; the player: "200 m view 18 fps with shadows, 28 without; 10 km 13 / 25 - something near us
+- **THE DEVICE MEASURED ITS OWN FRAME, LAYER BY LAYER** (HISTORY: `frame_probe.gd`, the profiler
+  panel and its PROBE button were REMOVED at the player's call, together with `perf.gd` and every
+  `Perf` mark; the tables below stay as the record. The player: "200 m view 18 fps with shadows, 28 without; 10 km 13 / 25 - something near us
   is expensive"). Each layer - shadows, ground and veins, the grass and snow lift, veins and trees,
   far tree cards, the grass trample viewport, machines, loose items, the sky, the HUD - is switched
   off for `WINDOW` between windows with it on, `ROUNDS` times, and the table goes to the panel and
@@ -3870,11 +3870,10 @@ project: read it before claiming how anything works.
   SHADOWS_ONLY twin with every instance (the sun casts, `shadow_enabled`), so each pass is still
   one draw call per group. Measured on a 38-block enemy from each side: 27-31 drawn, 75-79
   instances in the main pass against 86 in the shadow pass.
-- **THE PROFILER PANEL PRINTS PER FRAME (per physics TICK for `PERF_PHYS_KEYS`), AND IT DID NOT
-  USED TO.** The panel snapshots four times a second, and `Perf.snapshot` handed over everything
-  piled up since the last one — six frames at 23 fps — so a 5 ms pass read as 30 ms and the
-  "accounted" figure could exceed the whole process line. `Perf.frame` / `Perf.tick` (called by
-  the HUD) count what the snapshot divides by.
+- **THERE IS NO IN-GAME PROFILER PANEL ANY MORE** (the player's call): `perf.gd`, `frame_probe.gd`,
+  the HUD's PerfPanel (3D SCALE / ТЕНИ / PROBE / CLOSE) and the ways in (tap on the FPS counter,
+  three fingers, F3, `Main.profiler_on_start`) are gone, and so are the `Perf.now()/mark()` calls in
+  every system and the terrain's `perf_sink`. Measure with Godot's own profiler or a harness instead.
   IN GODOT'S VISUAL PROFILER, "UPDATE OCCLUSION BUFFER" IS NOT OCCLUSION. Its time runs from that
   mark to "Update Visibility Dependencies", and with occlusion culling off (it is: no occluders,
   project default) nothing runs between them but a no-op buffer update
@@ -4030,7 +4029,7 @@ project: read it before claiming how anything works.
 - **A BULLET'S TICK IS MOSTLY NOT THE RAYCAST.** Measured on the engine, 200 bullets, one physics
   tick: raycast with a fresh `PhysicsRayQueryParameters3D.create` 1224 us, the same raycast reusing
   one object 744 us, `Basis.looking_at` + `global_basis` 466 us, the child walk `_mesh_node` did per
-  tick 415 us, the position write 222 us, the two `Perf` marks 345 us — 2672 us in total, of which
+  tick 415 us, the position write 222 us, the two `Perf` marks (since removed) 345 us — 2672 us in total, of which
   the physics is 744. So the allocation cost more than a quarter of the "bullets" line and the mesh
   search nearly as much; both are now done once per bullet rather than once per tick, and the sweep
   was checked to behave identically (same hit at 3 m, same miss at 15 and 40 on a flat-aimed test,
@@ -4049,7 +4048,7 @@ project: read it before claiming how anything works.
   key built out of `str(transform)` - a round cost 33-57 us to fire, and a volley of two dozen
   shotguns (8 pellets, two shots) and a dozen mortars (8 shells) is ~290 rounds in ONE frame: the
   player's "FPS drops on every volley". After: 10-19 us, most of it the weapon's own aim and spread.
-  THE PICTURE IS WRITTEN ONCE A DRAWN FRAME (`_process` -> `_draw`, Perf `bullet_draw`), the flight
+  THE PICTURE IS WRITTEN ONCE A DRAWN FRAME (`_process` -> `_draw`), the flight
   once a physics tick: at 25 fps a frame holds two or three 60 Hz ticks, and each rewrote every
   round's transform for the one picture that used the last; the facing (`Shot.face`) is worked out
   there too, from the latest step. The tick fetches the space once, not once a round. Measured, 288

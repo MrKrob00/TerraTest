@@ -134,8 +134,6 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 @export var tutorial: bool = true
 ## The planetfall intro on a new world (planetfall.gd): the capsule falls, the start is laid on landing.
 @export var intro: bool = true
-## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
-@export var profiler_on_start: bool = false
 
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale

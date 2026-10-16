@@ -20,9 +20,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()          # profiler mark (perf.gd)
 	_tick_compass(delta)
-	Perf.mark("ui", _pf)
 
 func _tick_compass(delta: float) -> void:
 	_t += delta

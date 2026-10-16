@@ -77,9 +77,7 @@ func _process(_delta: float) -> void:
 	if not _dirty:
 		return
 	_dirty = false
-	var _pf := Perf.now()
 	_rebuild()
-	Perf.mark("batch", _pf)
 
 func _rebuild() -> void:
 	for id in _hidden.keys():

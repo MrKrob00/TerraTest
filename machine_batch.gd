@@ -131,7 +131,6 @@ var _parts_dt: float = 0.0
 var _parts_n: int = 0
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()
 	if _dirty:
 		_dirty = false
 		_rebuild()
@@ -143,7 +142,6 @@ func _process(delta: float) -> void:
 			_tick_parts(minf(_parts_dt, PARTS_DT_MAX))
 			_parts_dt = 0.0
 			_update_moving()
-	Perf.mark("batch", _pf)
 
 func _parts_due() -> bool:
 	var cam: Camera3D = get_viewport().get_camera_3d()

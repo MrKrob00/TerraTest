@@ -183,16 +183,6 @@ var terrain_is_ready: bool = false
 ## Экран загрузки читает эти два: что считается и какая доля пройдена.
 var gen_step: String = ""
 var gen_frac: float = 0.0
-## Сток замеров времени, `func(key: String, usec_start: int)`. Пустой — замеров нет.
-var perf_sink: Callable = Callable()
-
-func _pf_now() -> int:
-	return Time.get_ticks_usec() if not perf_sink.is_null() else 0
-
-func _pf_mark(key: String, t0: int) -> void:
-	if t0 != 0:
-		perf_sink.call(key, t0)
-
 var _gen: LiteTerrainGen = null
 ## ONE MATERIAL FOR EVERY LEVEL: the grass is the same function of the world point on all of them
 ## (glsl.gdshader), so there is nothing left to tell a near node from a far one.
@@ -2204,7 +2194,7 @@ func _get_material() -> Material:
 ## THE FAST GROUND: the ground's own shader as an unshaded variant that lights itself
 ## (glsl.gdshader, FAST_GROUND). Set while shadows are off (Main._apply_shadows): unshaded receives no
 ## shadow, and with none to receive the engine's lighting was 12 ms of the phone's 47 ms frame
-## (frame_probe, "ground unshaded" against "ground no shadow"). It swaps the SHADER of the one
+## (measured on the device: "ground unshaded" against "ground no shadow"). It swaps the SHADER of the one
 ## material every chunk and HLOD cluster shares, carrying every uniform across.
 var fast_ground: bool = false:
 	set(v):
@@ -2411,9 +2401,7 @@ var _no_h := PackedFloat32Array()      # what a point with no drawn heights read
 func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool = false) -> bool:
 	if not enable_occlusion_culling or _gen == null:
 		return false
-	var t0 := _pf_now()
 	var hid := _point_hidden(world_pos, height, was_hidden)
-	_pf_mark("terrain_occl", t0)
 	return hid
 
 func _point_hidden(world_pos: Vector3, height: float, was_hidden: bool) -> bool:
@@ -2566,9 +2554,7 @@ func _ground_tick(delta: float) -> void:
 	_held_check_t -= delta
 	if not _staged.is_empty() and _held_check_t <= 0.0 and (_held_dirty or _held_check_t <= -0.25):
 		_held_check_t = 0.25
-		var th := _pf_now()
 		_release_held()
-		_pf_mark("terrain_hold", th)
 	_lod_timer += delta
 	var cam := _active_camera()
 	if cam == null:
@@ -2588,7 +2574,6 @@ func _ground_tick(delta: float) -> void:
 	_sel_pos = cam.global_position
 	_sel_fwd = fwd
 	_cam = cam
-	var t0 := _pf_now()
 	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
 	_sel_local = cam_local
 	_select(cam_local)
@@ -2647,7 +2632,6 @@ func _ground_tick(delta: float) -> void:
 	_hlod_dirty = true
 	_sort_queues(_hold if _holding else cam_local)
 	_tick_ep = _cover_ep
-	_pf_mark("terrain_lod", t0)
 
 ## УШЕДШЕЕ ИЗ КАДРА ПРЯЧЕМ, А НЕ ВЫБРАСЫВАЕМ. Поворот камеры меняет половину видимого набора, и
 ## освобождать меши сразу значит собирать ту же сотню узлов заново через секунду — терраса за

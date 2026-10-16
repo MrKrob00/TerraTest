@@ -36,9 +36,7 @@ func _ready() -> void:
 	add_child(_props)
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()          # profiler mark (perf.gd)
 	_tick_arcs(delta)
-	Perf.mark("quests", _pf)
 
 func _tick_arcs(delta: float) -> void:
 	_t -= delta

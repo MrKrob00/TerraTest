@@ -1316,7 +1316,6 @@ func _process(delta: float) -> void:
 	if _cull_t > 0.0:
 		return
 	_cull_t = cull_interval
-	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
 	_regions_tick()                # игрок мог переехать в соседний регион — родим его жилы
 	# Камера не ушла из своей клетки — пересчитывать нечего. Направление взгляда сюда НЕ
 	# входит намеренно: жила гаснет и зажигается по направлению, и пропустить поворот значило
@@ -1327,7 +1326,6 @@ func _process(delta: float) -> void:
 				int(floor(cam0.global_position.z / RESCAN_CELL)))
 		var fwd0: Vector3 = -cam0.global_transform.basis.z
 		if cell == _last_cell and fwd0.dot(_last_fwd) > 0.999:
-			Perf.mark("veins", _pf)
 			return
 		_last_cell = cell
 		_last_fwd = fwd0
@@ -1397,7 +1395,6 @@ func _process(delta: float) -> void:
 				cards.append([v["pos"], ts.x, ts.y, kind])
 	if _far != null:
 		_far.set_trees(cards)
-	Perf.mark("veins", _pf)
 
 
 # Родитель, умеющий отвечать как карта. null, если не дождались.

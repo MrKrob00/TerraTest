@@ -315,9 +315,7 @@ const UNSINK_PERIOD := 0.25
 var _unsink_t: float = randf() * UNSINK_PERIOD
 
 func _physics_process(delta: float) -> void:
-	var _pf := Perf.now()          # profiler mark (perf.gd): cost of enemy AI
 	_physics_ai(delta)
-	Perf.mark("enemies", _pf)
 
 ## An ENEMY BASE is the same enemy without a drivetrain: anchored, does not drive, shoots whatever
 ## comes near. No separate class on purpose: it differs from a machine exactly as our base differs

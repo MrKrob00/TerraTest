@@ -10,19 +10,11 @@ const TECH_UI := preload("res://tech_ui.tscn")
 @onready var current_vehicle = $"..".current_vehicle
 
 # ── Меню (левый верх) ────────────────────────────────────────────────────────
-## Площадь счётчика FPS: он же кнопка панели профиля, и мерить её надо пальцем, а не текстом.
-## Шире, но НЕ выше прежнего: метка ловит тапы (mouse_filter STOP), то есть это ещё и мёртвая
-## зона для постройки — растить её вниз, в рабочую часть экрана, нельзя.
 ## THE FPS READOUT IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A LAYER OF ITS OWN (the player's
 ## call): it was a 48 px number in the top middle, inside the HUD, so the garage covered it. Its own
-## CanvasLayer over everything keeps it in the garage too; G.show_fps (garage settings) hides it. The
-## area is still a finger's (FPS_HIT): a tap opens the profiler, as before, outside the garage.
-## The tap area grows UP from the corner, not along the bottom edge: a 22 px strip on the very edge sat
-## in the Android gesture zone and the profiler could no longer be opened on the tablet.
-const FPS_HIT := Vector2(140.0, 48.0)
-## Second door to the profiler, independent of where the counter stands or whether it is shown:
-## three fingers on the glass at once (outside the garage).
-const PERF_FINGERS := 3
+## CanvasLayer over everything keeps it in the garage too; G.show_fps (garage settings) hides it.
+## A readout only: it takes no input (MOUSE_FILTER_IGNORE), so the corner stays free for play.
+const FPS_HIT := Vector2(96.0, 22.0)
 const FPS_LAYER := 90
 const FPS_EVERY := 0.25               # s between text updates: setting text reshapes the label
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
@@ -94,8 +86,6 @@ func _ready() -> void:
 	var music := get_node_or_null("/root/Music")
 	if music:
 		music.track_changed.connect(_show_music_toast)
-	# Счётчик FPS открывает ПАНЕЛЬ ПРОФИЛЯ по тапу. Label по умолчанию не берёт ввод вовсе,
-	# поэтому фильтр ставим руками; отдельной кнопки отладки на экране быть не должно.
 	_fps_lbl = get_node_or_null("Label") as Label
 	if _fps_lbl:
 		var layer := CanvasLayer.new()
@@ -111,13 +101,7 @@ func _ready() -> void:
 		_fps_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		_fps_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 		_fps_lbl.visible = G.show_fps
-		_fps_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
-		_fps_lbl.gui_input.connect(_on_fps_input)
-	# Debug switch (Main → Отладка → Мир): open the profiler right away. Through the same toggle
-	# and DEFERRED — the panel lives in the scene and is bound by _build_perf_panel, which pulls
-	# it out with %-names; calling it mid-_ready would race the rest of the HUD binding.
-	if G.debug(&"profiler_on_start", false):
-		_toggle_perf_panel.call_deferred()
+		_fps_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 # Пере-раскладка построенных в коде элементов HUD под текущий размер экрана. Всё, что
 # прибито к краям (меню, кнопка режима, панель поворота, кнопка якоря, «шар» блоков), пересчитываем
@@ -357,7 +341,7 @@ func _lift(n: Node) -> Node:
 	return n
 
 # ── ПАНЕЛИ ЖИВУТ В СЦЕНЕ, А НЕ В КОДЕ ─────────────────────────────────────────
-# Деньги, рынок, панель профиля, «блок в руке» и кнопки поворота собраны узлами в node_3d.tscn
+# Деньги, рынок, «блок в руке» и кнопки поворота собраны узлами в node_3d.tscn
 # (под HUD), а сюда приходят по уникальным именам. Раньше их строил код: чтобы поправить отступ
 # или цвет, надо было искать нужный .new() среди двух тысяч строк и запускать игру, чтобы
 # увидеть результат. Теперь структура и стиль — в инспекторе, а в коде остаётся то, чего нодой
@@ -917,21 +901,6 @@ const VMENU_GRACE_MS: int = 300
 var _vmenu_open_ms: int = 0
 
 func _input(event: InputEvent) -> void:
-	# F3: the profiler (PC). On the phone a TAP ON THE FPS COUNTER opens it - no debug button of
-	# its own on screen; the counter is already there, in the bottom-right corner. Or three fingers at once.
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).keycode == KEY_F3:
-		_toggle_perf_panel()
-		get_viewport().set_input_as_handled()
-		return
-	if event is InputEventScreenTouch:
-		var st := event as InputEventScreenTouch
-		if st.pressed:
-			_perf_touches[st.index] = true
-			if _perf_touches.size() == PERF_FINGERS and not (_tech_ui != null and _tech_ui.visible):
-				_toggle_perf_panel()
-		else:
-			_perf_touches.erase(st.index)
 	# The icon's own finger leaving the glass ends its hold (see _vbtn_touch).
 	if event is InputEventScreenTouch and not event.pressed and event.index == _vbtn_touch:
 		_vbtn_touch_down = false
@@ -1308,51 +1277,14 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 	if v and v.has_method("rotate_build"):
 		v.rotate_build(axis, ang)
 
-func _physics_process(_delta: float) -> void:
-	Perf.tick()
-
 func _process(delta: float) -> void:
-	Perf.frame()
-	var _pf := Perf.now()     # метка для панели профиля (perf.gd): цена самого HUD
 	_tick_fps(delta)
 	_update_radar(delta)
 	_update_vehicle_button(delta)
 	_update_hand_panel()
 	_sync_mode_visuals()      # дешёвый сторож: работает только когда режим реально сменился
-	Perf.mark("hud", _pf)
-	if _perf_panel != null and _perf_panel.visible:
-		_update_perf_panel(delta)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PROFILER PANEL  (tap the FPS counter; F3 on desktop)
-# ══════════════════════════════════════════════════════════════════════════════
-# Answers the two questions an argument cannot: physics or rendering, and which system eats the
-# frame.
-#
-# READ "process" CAREFULLY: Godot measures it around the WHOLE idle step, and that step ENDS with
-# RenderingServer::draw(). Drawing is inside this number, not next to it. On a device whose GL is
-# emulated on the CPU that draw can be most of the frame while every script below is nearly free.
-#
-# Hence "не учтено" = process minus everything our marks account for. Growing with draw calls means
-# the cost is drawing; steady while draw calls stay flat means an unmarked script.
-#
-# Physics time is NOT part of process and gets no percentage: a physics tick is not a frame (60 Hz
-# against ~47 fps), so summing them once read "140% кадра".
-#
-# The RESOLUTION TEST settles it: tap the panel to cycle the 3D scale. Big fps change with static
-# per-system numbers means the frame goes on pixels. Measuring costs, so it runs only while open.
-var _perf_panel: PanelContainer = null
-var _perf_label: Label = null
-## Marks taken inside _physics_process — they belong to the physics budget, not the idle one.
-## (The wheels have no tick of their own any more: their picture is in "batch", a frame mark.)
-const PERF_PHYS_KEYS := ["machines", "enemies", "weapons", "factory", "bullets", "camera"]
-## The panel is refreshed a few times per second, not every frame: numbers that change 60
-## times a second cannot be read, and the panel itself would distort what it measures.
-const PERF_REFRESH := 0.25
-var _perf_t: float = 0.0
 
 var _fps_lbl: Label = null
-var _perf_touches: Dictionary = {}
 var _fps_t: float = 0.0
 var _fps_shown: int = -1
 
@@ -1367,241 +1299,6 @@ func _tick_fps(delta: float) -> void:
 	if f != _fps_shown:
 		_fps_shown = f
 		_fps_lbl.text = "%d FPS" % f
-
-func _on_fps_input(e: InputEvent) -> void:
-	if _tech_ui != null and _tech_ui.visible:
-		return                      # the profiler lives under the garage
-	if (e is InputEventScreenTouch and e.pressed) \
-			or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
-		_toggle_perf_panel()
-		get_viewport().set_input_as_handled()
-
-func _toggle_perf_panel() -> void:
-	if _perf_panel == null:
-		_build_perf_panel()
-	_perf_panel.visible = not _perf_panel.visible
-	Perf.enabled = _perf_panel.visible
-	# The terrain is a SELF-CONTAINED addon and knows nothing about our profiler: it calls a
-	# Callable handed to it from outside. An empty one means measuring is off, so it goes away
-	# together with the panel.
-	var terr := get_node_or_null("/root/Main/map")
-	if terr != null and "perf_sink" in terr:
-		terr.set("perf_sink", Perf.mark if Perf.enabled else Callable())
-	if not Perf.enabled:
-		Perf.reset()
-
-func _build_perf_panel() -> void:
-	_perf_panel = _lift(%PerfPanel)
-	_perf_label = %PerfText
-	# ДВЕ ПОДПИСАННЫЕ КНОПКИ вместо «тапни по панели». Раньше панель ловила тап целиком и по
-	# нему меняла разрешение 3D, а закрывалась она вторым тапом по счётчику FPS — то есть оба
-	# действия были невидимыми жестами, и «закрыть вообще хз» было честной оценкой. Тестеру,
-	# который открыл панель впервые, должно быть видно, чем её закрыть.
-	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
-	(%PerfShadow as Button).pressed.connect(_toggle_shadows)
-	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
-	(%PerfProbe as Button).pressed.connect(_run_probe)
-
-## The device measures its own frame layer by layer (frame_probe.gd); the table stays on the panel
-## and goes to the clipboard, so the player can paste it.
-const FRAME_PROBE := preload("res://frame_probe.gd")
-var _probe: Node = null
-var _probe_text: String = ""
-
-func _run_probe() -> void:
-	if is_instance_valid(_probe):
-		return
-	_probe_text = ""
-	_probe = FRAME_PROBE.new()
-	add_child(_probe)
-	_probe.finished.connect(_on_probe_done)
-	_probe.run()
-
-func _on_probe_done(text: String) -> void:
-	_probe_text = text + "\n(copied)"
-	if is_instance_valid(_probe):
-		_probe.queue_free()
-	_probe = null
-
-
-func _update_perf_panel(delta: float) -> void:
-	_perf_t -= delta
-	if _perf_t > 0.0:
-		return
-	_perf_t = PERF_REFRESH
-	var frame_ms: float = 1000.0 / maxf(Engine.get_frames_per_second(), 1.0)
-	var proc_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
-	var phys_ms: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
-	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
-	var objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
-	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
-	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
-
-	# Per-system marks, split into the two budgets they were taken in.
-	var snap: Dictionary = Perf.snapshot(PERF_PHYS_KEYS)
-	var proc_marked: float = 0.0
-	var phys_marked: float = 0.0
-	for k in snap:
-		var ms: float = float(snap[k]) / 1000.0
-		if PERF_PHYS_KEYS.has(String(k)):
-			phys_marked += ms
-		elif not String(k).contains("."):     # "terrain.lod" is part of "terrain", not extra
-			proc_marked += ms
-
-	var lines: Array[String] = []
-	lines.append("%d FPS · кадр %.1f мс" % [int(Engine.get_frames_per_second()), frame_ms])
-	lines.append("скрипты %.1f мс за кадр (в process входит и рендер — см. ниже)" % proc_marked)
-	lines.append("physics %.1f мс/тик (учтено %.1f, не учтено %.1f) — в него входит и сам Jolt"
-			% [phys_ms, phys_marked, maxf(phys_ms - phys_marked, 0.0)])
-	# THE MOST IMPORTANT LINE: how much of the frame is DRAWING. The engine's "process" time is not
-	# scripts alone - main.cpp starts that clock before the scripts' _process and stops it AFTER
-	# RenderingServer.draw(), so drawing and the driver are inside it. Subtracting process from the
-	# frame therefore showed ~0 ms "outside scripts" on a device that was spending 31 of 38 ms
-	# drawing. Drawing is what process holds beyond the scripts that were marked.
-	# (Both monitors are the worst tick of the last second, so the split is approximate.)
-	var render_ms: float = maxf(proc_ms - proc_marked, 0.0)
-	lines.append("РЕНДЕР+ДРАЙВЕР ~%.1f мс из %.1f (process %.1f минус скрипты %.1f)"
-			% [render_ms, frame_ms, proc_ms, proc_marked])
-	@warning_ignore("integer_division")
-	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
-
-	# Bodies are counted BY HAND. Godot's PHYSICS_3D_* monitors stay at zero under Jolt, and a
-	# line of zeros is worse than no line: it reads as "physics is idle" when it is not.
-	var o := get_node_or_null("/root/Main/objects")
-	if o != null:
-		var awake := 0
-		var culled := 0
-		for c in o.get_children():
-			var rb := c as RigidBody3D
-			if rb != null and not rb.sleeping and not rb.freeze:
-				awake += 1
-			if c.has_meta("culled"):
-				culled += 1
-		lines.append("в мире: %d предметов (%d не спят, %d погашено)"
-				% [o.get_child_count(), awake, culled])
-	var vehicles := get_node_or_null("/root/Main/Vehicles")
-	if vehicles != null:
-		var blocks_total := 0
-		for v in vehicles.get_children():
-			var bl := v.get_node_or_null("blocks")
-			if bl != null:
-				blocks_total += bl.get_child_count()
-		lines.append("машин: %d (блоков на них %d)" % [vehicles.get_child_count(), blocks_total])
-
-	# СКОЛЬКО ВРАГОВ НЕ СПИТ — теперь это главное число цены боя. Потолок бодрствующих снят,
-	# держит её только радиус сна (enemy_spawner.sleep_dist), а сколько машин в него попало,
-	# заранее не известно: у каждой не спящей идут колёса, ИИ и тики стволов. Судить об этом
-	# можно только на устройстве, значит число должно быть на экране.
-	var spawner := get_node_or_null("/root/Main/EnemySpawner")
-	if spawner != null and spawner.has_method("awake_count"):
-		lines.append("враги: %d не спят из %d" % [spawner.awake_count(), spawner.enemy_count()])
-
-	# Terrain collision tiles: every non-sleeping body holds its own patch of heightfield open,
-	# so this line is what tells a terrain problem apart from a loose-block problem.
-	var terr := get_node_or_null("/root/Main/map")
-	if terr != null and terr.has_method("collision_stats"):
-		var cs: Vector2i = terr.collision_stats()
-		lines.append("коллизия рельефа: %d плиток под %d телами" % [cs.x, cs.y])
-	# ЧЬИ объекты в кадре. Общее число ни о чём не говорит, пока не видно долей: резать надо
-	# самую большую, а не ту, на которую первой подумал.
-	if terr != null and terr.has_method("render_stats"):
-		var rs: Vector3i = terr.render_stats()
-		lines.append("рельеф: %d узлов в кадре, из них %d уровня 0; в очереди %d"
-				% [rs.x, rs.y, rs.z])
-	var props := get_node_or_null("/root/Main/map/BiomeProps")
-	if props != null:
-		lines.append("пропов: %d" % props.get_child_count())
-
-	var keys: Array = snap.keys()
-	keys.sort_custom(func(a, b): return float(snap[a]) > float(snap[b]))
-	var parts: Array[String] = []
-	for k in keys:
-		var ms2: float = float(snap[k]) / 1000.0
-		if ms2 >= 0.05:
-			parts.append("%s %.1f" % [k, ms2])
-	lines.append("по системам, мс за кадр (%s — за тик): " % ", ".join(PERF_PHYS_KEYS)
-			+ (", ".join(parts) if not parts.is_empty() else "—"))
-	# WHAT IS DRAWING THIS. On a device with no real GPU the adapter name says so outright
-	# (llvmpipe, SwiftShader, Mesa softpipe), and then "process" is mostly the rasterizer.
-	var vp := get_viewport()
-	var vs: Vector2 = vp.get_visible_rect().size
-	lines.append("рендер: %s · %s" % [_render_method(), RenderingServer.get_video_adapter_name()])
-	# Auto-FPS is shown because the resolution test switches it OFF and that is written to
-	# settings: without this line the game just stays blurry later and nobody remembers why.
-	var main_node := get_node_or_null("/root/Main")
-	var auto_fps: bool = main_node != null and main_node.get("auto_fps") == true
-	lines.append("экран %dx%d · 3D scale %.2f -> %dx%d · авто-FPS %s"
-			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
-			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
-			"вкл" if auto_fps else "ВЫКЛ"])
-	var sun := get_node_or_null("/root/Main/DirectionalLight3D2")
-	if sun is DirectionalLight3D:
-		lines.append("тени: %s" % ("вкл" if (sun as DirectionalLight3D).shadow_enabled else "ВЫКЛ"))
-	lines.append("узлов %d" % nodes)
-	# НОМЕР СБОРКИ — ради тестеров. Без него отчёт «у меня падает» не привязать к версии, а
-	# у беты это единственный способ понять, о какой сборке речь. Панель профиля для этого и
-	# годится: она открывается тапом по счётчику FPS, то есть тестеру достаточно одного жеста.
-	lines.append("сборка %s" % str(ProjectSettings.get_setting("application/config/version", "?")))
-	if is_instance_valid(_probe):
-		lines.append(String(_probe.get("status")))
-	if _probe_text != "":
-		lines.append(_probe_text)
-	_perf_label.text = "\n".join(lines)
-
-func _render_method() -> String:
-	if RenderingServer.has_method("get_current_rendering_method"):
-		return String(RenderingServer.call("get_current_rendering_method"))
-	return String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "?"))
-
-## THE RESOLUTION TEST, one tap. Cycles the 3D render scale and turns auto-FPS off so the
-## scale stays where it is put (Main would otherwise pull it back within a second).
-##
-## What it proves: pixels are the only thing that changes. If fps climbs steeply as the scale
-## drops while the per-system table barely moves, the frame is going into rasterizing — and on
-## a machine without a GPU that lands inside "process", looking exactly like slow logic.
-## If fps does not move, drawing is not the bottleneck and the table is where to look.
-const PERF_SCALES := [1.0, 0.75, 0.5, 0.35]
-
-## ТЕНИ — ВТОРАЯ ПРОБА И САМАЯ РЕЗУЛЬТАТИВНАЯ: замер на устройстве дал 17 fps против 25.
-## Кнопка остаётся не как отладка, а как переключатель качества: цена известна, и решать,
-## платить ли её, теперь можно на месте.
-##
-## Солнце с shadow_enabled рисует всю сцену ВТОРОЙ РАЗ в карту 1024² каждый кадр: всю землю в
-## радиусе directional_shadow_max_distance и все машины. Это отдельный геометрический проход, и
-## на мобильной видеокарте он стоит заметно.
-##
-## Читать так: fps вырос — тени и есть цена, и дальше это вопрос их дальности, размера карты или
-## отказа от них. Не сдвинулся — остаётся честный вывод, что кадр уходит в заполнение экрана, и
-## лечится он только разрешением и перерисовкой.
-func _toggle_shadows() -> void:
-	var lights: Array[Node] = get_tree().get_nodes_in_group("perf_lights")
-	if lights.is_empty():
-		# Группы нет — берём все солнца сцены: их одно-два, и искать дешевле, чем заводить связь.
-		var main := get_node_or_null("/root/Main")
-		if main != null:
-			lights.assign(main.find_children("*", "DirectionalLight3D", true, false))
-	for l in lights:
-		var dl := l as DirectionalLight3D
-		if dl != null:
-			dl.shadow_enabled = not dl.shadow_enabled
-	_perf_t = 0.0
-
-func _cycle_render_scale() -> void:
-	var vp := get_viewport()
-	var cur: float = vp.scaling_3d_scale
-	var idx := 0
-	for i in PERF_SCALES.size():
-		if absf(float(PERF_SCALES[i]) - cur) < 0.03:
-			idx = i
-			break
-	var next: float = float(PERF_SCALES[(idx + 1) % PERF_SCALES.size()])
-	var main := get_node_or_null("/root/Main")
-	if main != null and main.has_method("set_auto_fps") and main.has_method("set_manual_scale"):
-		main.set_auto_fps(false)          # or the auto-scaler pulls it back within a second
-		main.set_manual_scale(next)
-	else:
-		vp.scaling_3d_scale = next
-	_perf_t = 0.0
 
 # Радар обновляем не каждый кадр (сбор блипов — O(враги+жилы)): раз в 0.15с. Виден только
 # если у активной машины есть блок RADAR. Блипы: враги (красные), активные жилы (жёлтые).
@@ -2214,9 +1911,6 @@ func notify_build_changed() -> void:
 
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
-	if _fps_lbl:
-		# over the garage it only shows: a tap there belongs to the garage's own controls
-		_fps_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE if open else Control.MOUSE_FILTER_STOP
 	if not open:
 		# Панель только скрывается (visible=false), фокус (напр. поле поиска) сам не
 		# снимается — на ПК залипший фокус в LineEdit гасил бы клавиатурные действия
