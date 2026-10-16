@@ -2792,6 +2792,13 @@ project: read it before claiming how anything works.
   pooled slots in the order the shop's sections left them. A row the money does not cover shows its
   price red and dims (a disabled Button dims its box, not the labels in it). Checked on the real
   driver in English and Russian, the last minute included.
+  **THE SHOP WEARS THE BLOCKS' LOOK** (`tech_ui._plate` / `_row_style`, docs/ART_STYLE.md): dark
+  violet-grey metal plates with cut corners (`corner_detail = 1`), no rounded pills, glow or
+  shadows; a row's left stripe is its block's FACTION (`FACTION_COL`), the portrait sits in a dark
+  well, the price follows a drawn coin (`CoinIcon`, no "$" in the shop row), a locked row shows a
+  drawn padlock (`LockIcon`), "N left" and the sale percent are hard-edged chips, section heads are
+  stencilled tabs, the day bar is a gauge notched in tenths, filter tabs are 48 points tall. Shop
+  rows only: `_reset_slot` strips the plate so inventory and builds rows look as before.
 
 ### Look and light
 

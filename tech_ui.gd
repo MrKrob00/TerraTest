@@ -32,8 +32,26 @@ const SALE_COL := Color(1.0, 0.82, 0.22)
 ## list in three sections - on sale, today only (a stock-limited block, with how many are left), always
 ## in stock. The window IS the shop's rule, and a flat list hid which blocks would be gone tomorrow.
 const STOCK_COL := Color(0.55, 0.85, 0.9)
+## THE SHOP'S LOOK IS THE BLOCKS' LOOK (docs/ART_STYLE.md): dark violet-grey metal, shape read by a
+## lighter EDGE LINE on top and a darker one under it, corners CUT (corner_detail 1 turns a radius
+## into a chamfer), never rounded pills, no glow, no shadow. Colour is an accent, not a fill: the
+## faction's stripe down a row's left edge, the warm sale stripe over it, a chip for the stock count.
+const METAL := Color(0.094, 0.094, 0.114, 0.97)
+const METAL_HI := Color(0.125, 0.125, 0.15, 0.98)
+const METAL_LO := Color(0.06, 0.06, 0.074, 0.97)
+const EDGE_HI := Color(0.24, 0.24, 0.29)
+const EDGE_LO := Color(0.03, 0.03, 0.04)
+const CHAMFER := 5
+## A row's stripe by the block's faction; "start" is the GSO blue of the models.
+const FACTION_COL := {
+	"start": Color(0.43, 0.6, 0.85),
+	"marlit": Color(0.3, 0.74, 0.7),
+	"aero": Color(0.95, 0.6, 0.25),
+	"stryx": Color(0.55, 0.8, 0.4),
+}
+var _row_styles: Dictionary = {}          # faction key -> {normal, hover, pressed, disabled}
 const POOR_COL := Color(0.95, 0.5, 0.45)
-const HEAD_H := 24.0
+const HEAD_H := 28.0
 enum { SHOP_SALE, SHOP_TODAY, SHOP_ALWAYS }
 var _shop_head: PanelContainer = null
 var _shop_cap: Label = null
@@ -158,7 +176,8 @@ func _build_filter_column() -> void:
 		fb.text = tr(String(f[1]))
 		fb.toggle_mode = true
 		fb.button_pressed = (f[0] == _shop_filter)
-		fb.custom_minimum_size = Vector2(104, 40)
+		fb.custom_minimum_size = Vector2(104, 48)
+		_style_filter_button(fb)
 		fb.pressed.connect(_set_shop_filter.bind(f[0]))
 		_filter_col.add_child(fb)
 		_filter_buttons[f[0]] = fb
@@ -179,6 +198,66 @@ func _build_filter_column() -> void:
 		_codex_col.add_child(cb)
 		_codex_buttons[k[0]] = cb
 
+## A filter tab: a cut-cornered metal plate; the chosen one is lighter with the GSO blue on its left
+## edge, like a selected row. 48 points tall - a finger, not a cursor.
+func _style_filter_button(b: Button) -> void:
+	var accent: Color = FACTION_COL["start"]
+	b.add_theme_stylebox_override("normal", _plate(METAL, EDGE_HI, Color(0, 0, 0, 0), 0))
+	b.add_theme_stylebox_override("hover", _plate(METAL_HI, EDGE_HI, Color(0, 0, 0, 0), 0))
+	b.add_theme_stylebox_override("pressed", _plate(METAL_HI, EDGE_HI, accent, 4))
+	b.add_theme_stylebox_override("hover_pressed", _plate(METAL_HI, EDGE_HI, accent, 4))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.add_theme_color_override("font_color", Color(0.62, 0.64, 0.72))
+	b.add_theme_color_override("font_hover_color", Color(0.85, 0.86, 0.9))
+	b.add_theme_color_override("font_pressed_color", Color(0.95, 0.96, 1.0))
+	b.add_theme_color_override("font_hover_pressed_color", Color(0.95, 0.96, 1.0))
+	b.add_theme_font_size_override("font_size", 14)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+## One plate of the shop: metal fill, lighter edge line on top, darker under, a cut corner, and an
+## optional stripe of `stripe_w` down the left.
+func _plate(bg: Color, hi: Color, stripe: Color, stripe_w: int) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_width_top = 1
+	sb.border_width_bottom = 1
+	sb.border_width_left = stripe_w
+	sb.border_color = hi
+	if stripe_w > 0:
+		sb.border_color = stripe
+	sb.set_corner_radius_all(CHAMFER)
+	sb.corner_radius_top_left = 0
+	sb.corner_radius_bottom_left = 0
+	sb.corner_detail = 1
+	sb.anti_aliasing = false
+	sb.content_margin_left = 12.0 + stripe_w
+	sb.content_margin_right = 8.0
+	return sb
+
+## The four states of a shop row in its faction's colour, built once per faction.
+func _row_style(f: String) -> Dictionary:
+	if _row_styles.has(f):
+		return _row_styles[f]
+	var col: Color = FACTION_COL.get(f, FACTION_COL["start"])
+	var d := {
+		"normal": _plate(METAL, EDGE_HI, col, 4),
+		"hover": _plate(METAL_HI, EDGE_HI, col.lightened(0.2), 4),
+		"pressed": _plate(METAL_LO, EDGE_HI, col.lightened(0.35), 4),
+		"disabled": _plate(METAL_LO, EDGE_HI, Color(col.r, col.g, col.b, 0.35), 4),
+	}
+	_row_styles[f] = d
+	return d
+
+func _chip(col: Color) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(col.r, col.g, col.b, 0.16)
+	sb.border_color = Color(col.r, col.g, col.b, 0.75)
+	sb.set_border_width_all(1)
+	sb.anti_aliasing = false
+	sb.content_margin_left = 5.0
+	sb.content_margin_right = 5.0
+	return sb
+
 ## The strip over the shop's list: "Restock in 12:34", the day's bar, today's counts. Shown on the
 ## SHOP tab only (`_update_shop_head`); built once, like the filter column.
 func _build_shop_head() -> void:
@@ -187,10 +266,14 @@ func _build_shop_head() -> void:
 		return
 	_shop_head = PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.16, 0.19, 0.95)
-	sb.border_color = Color(0.35, 0.72, 0.78, 0.5)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = METAL_LO
+	sb.border_color = EDGE_HI
+	sb.border_width_top = 1
+	sb.border_width_bottom = 2
+	sb.border_width_left = 4
+	sb.set_corner_radius_all(CHAMFER)
+	sb.corner_detail = 1
+	sb.anti_aliasing = false
 	sb.content_margin_left = 12.0
 	sb.content_margin_right = 12.0
 	sb.content_margin_top = 7.0
@@ -210,22 +293,23 @@ func _build_shop_head() -> void:
 	_shop_cap = Label.new()
 	_shop_cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_shop_cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_shop_cap.add_theme_font_size_override("font_size", 13)
-	_shop_cap.add_theme_color_override("font_color", Color(0.55, 0.78, 0.84))
+	_shop_cap.add_theme_font_size_override("font_size", 12)
+	_shop_cap.add_theme_color_override("font_color", Color(0.62, 0.64, 0.72))
+	_shop_cap.uppercase = true
 	_shop_cap.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_shop_cap.clip_text = true
 	row.add_child(_shop_cap)
 	_shop_time = Label.new()
 	_shop_time.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_shop_time.add_theme_font_size_override("font_size", 22)
+	_shop_time.add_theme_font_size_override("font_size", 28)
 	row.add_child(_shop_time)
 	_shop_bar = DayBar.new()
-	_shop_bar.custom_minimum_size = Vector2(0.0, 6.0)
+	_shop_bar.custom_minimum_size = Vector2(0.0, 8.0)
 	_shop_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(_shop_bar)
 	_shop_info = Label.new()
 	_shop_info.add_theme_font_size_override("font_size", 12)
-	_shop_info.add_theme_color_override("font_color", Color(0.6, 0.8, 0.85, 0.9))
+	_shop_info.add_theme_color_override("font_color", Color(0.62, 0.64, 0.72))
 	_shop_info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_shop_info.clip_text = true
 	col.add_child(_shop_info)
@@ -252,7 +336,7 @@ func _update_shop_head(force: bool = false) -> void:
 	_shop_bar.visible = true
 	_shop_time.text = "%d:%02d" % [sec / 60, sec % 60]
 	var last: bool = sec <= 60                   # the last minute warms up: tomorrow is close
-	_shop_time.add_theme_color_override("font_color", SALE_COL if last else Color(0.86, 0.97, 1.0))
+	_shop_time.add_theme_color_override("font_color", SALE_COL if last else Color(0.92, 0.93, 0.96))
 	_shop_bar.frac = clampf(left / G.SHOP_DAY, 0.0, 1.0)
 	_shop_bar.warm = last
 	_shop_bar.queue_redraw()
@@ -807,7 +891,7 @@ const COLS := 1
 ## английского, и «плавающая» полоска прыгала бы от плитки к плитке.
 ## Высота строки и её шрифт. Фиксированные: строка должна быть одинаковой у всех, иначе список
 ## «дышит» при прокрутке, а картинка блока в разных строках выходит разного размера.
-const ROW_H := 50.0
+const ROW_H := 56.0
 const ROW_FONT := 13
 
 ## Высота строки. Имя функции осталось прежним: её зовут все заполнители слотов, а менять
@@ -896,6 +980,9 @@ class Slot extends Button:
 	var stock: Label = null           # "3 left" under the sale corner: a stock-limited block
 	var accent: ColorRect = null      # the warm stripe down the left edge of a row on sale
 	var pencil: Control = null
+	var well: PanelContainer = null   # the dark square the portrait sits in (shop only)
+	var coin: Control = null          # drawn currency mark before a shop price
+	var lock: Control = null          # drawn padlock before a locked row's grade
 
 var _pool: Array = []
 var _empty_label: Label = null
@@ -976,7 +1063,11 @@ func _new_slot() -> Slot:
 	s.block_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	s.block_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	s.block_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(s.block_icon)
+	s.well = PanelContainer.new()
+	s.well.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.well.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(s.well)
+	s.well.add_child(s.block_icon)
 	s.name_lbl = Label.new()
 	s.name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	s.name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -984,6 +1075,18 @@ func _new_slot() -> Slot:
 	s.name_lbl.clip_text = true
 	s.name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(s.name_lbl)
+	s.coin = CoinIcon.new()
+	s.coin.custom_minimum_size = Vector2(16.0, 16.0)
+	s.coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.coin.visible = false
+	row.add_child(s.coin)
+	s.lock = LockIcon.new()
+	s.lock.custom_minimum_size = Vector2(16.0, 16.0)
+	s.lock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.lock.visible = false
+	row.add_child(s.lock)
 	s.corner = Label.new()
 	s.corner.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	s.corner.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -995,32 +1098,38 @@ func _new_slot() -> Slot:
 	# половина процента. Две короткие надписи в разных углах читаются и на самом узком слоте.
 	s.sale = Label.new()
 	s.sale.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	s.sale.offset_left = -96.0
-	s.sale.offset_top = 2.0
-	s.sale.offset_right = -62.0
+	s.sale.offset_left = -88.0
+	s.sale.offset_top = 3.0
+	s.sale.offset_right = -84.0
+	s.sale.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	s.sale.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	s.sale.add_theme_font_size_override("font_size", 11)
-	s.sale.add_theme_color_override("font_color", SALE_COL)
+	s.sale.add_theme_color_override("font_color", Color(0.1, 0.07, 0.0))
+	var sale_sb := _chip(SALE_COL)
+	sale_sb.bg_color = SALE_COL
+	s.sale.add_theme_stylebox_override("normal", sale_sb)
 	s.sale.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	s.sale.visible = false
 	s.add_child(s.sale)
 	s.stock = Label.new()
 	s.stock.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	s.stock.offset_left = -170.0
-	s.stock.offset_top = -16.0
-	s.stock.offset_right = -62.0
-	s.stock.offset_bottom = -2.0
+	s.stock.offset_left = -88.0
+	s.stock.offset_top = -19.0
+	s.stock.offset_right = -84.0
+	s.stock.offset_bottom = -3.0
+	s.stock.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	s.stock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	s.stock.add_theme_font_size_override("font_size", 11)
 	s.stock.add_theme_color_override("font_color", STOCK_COL)
+	s.stock.add_theme_stylebox_override("normal", _chip(STOCK_COL))
 	s.stock.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	s.stock.visible = false
 	s.add_child(s.stock)
 	s.accent = ColorRect.new()
 	s.accent.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	s.accent.offset_top = 3.0
-	s.accent.offset_bottom = -3.0
-	s.accent.offset_right = 3.0
+	s.accent.offset_top = 0.0
+	s.accent.offset_bottom = 0.0
+	s.accent.offset_right = 4.0
 	s.accent.color = SALE_COL
 	s.accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	s.accent.visible = false
@@ -1089,6 +1198,12 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.stock.visible = false
 	s.accent.visible = false
 	s.pencil.visible = false
+	s.coin.visible = false
+	s.lock.visible = false
+	s.corner.custom_minimum_size.x = 58.0
+	for st in ["normal", "hover", "pressed", "disabled"]:
+		s.remove_theme_stylebox_override(st)
+	s.well.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	s.visible = true
 
 # ИНВЕНТАРЬ: в углу ×count, клик → блок в руку.
@@ -1103,6 +1218,17 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		s.corner.text = "×%d" % int(it["count"])
 		return
 	s.price = int(it["price"])
+	var meta: Dictionary = G.BLOCK_META.get(s.arg, {})
+	var rs: Dictionary = _row_style(String(meta.get("f", "start")))
+	for st in rs:
+		s.add_theme_stylebox_override(st, rs[st])
+	var well_sb := StyleBoxFlat.new()
+	well_sb.bg_color = Color(0.035, 0.035, 0.045, 0.9)
+	well_sb.border_width_bottom = 1
+	well_sb.border_color = EDGE_HI
+	well_sb.anti_aliasing = false
+	s.well.add_theme_stylebox_override("panel", well_sb)
+	s.corner.custom_minimum_size.x = 0.0
 	if not G.is_block_shop_unlocked(s.arg):
 		# Замок: блок виден (мотивация), но не покупается. Причина в углу и тултипе:
 		# не исследован в древе / не хватает грейда лицензии.
@@ -1113,11 +1239,13 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		else:
 			s.corner.text = tr("tree")
 			s.tooltip_text = tr("Research in the tech tree")
+		s.lock.visible = true
 		s.disabled = true
-		s.modulate = Color(1, 1, 1, 0.45)
+		s.modulate = Color(1, 1, 1, 0.5)
 		return
 	s.action = &"buy"
-	s.corner.text = "%d$" % s.price
+	s.corner.text = "%d" % s.price
+	s.coin.visible = true
 	# A stock-limited block says how many are left today, under the sale corner; a basic one is
 	# endless and says nothing - its section does.
 	var left: int = int(it.get("left", -1))
@@ -1247,12 +1375,16 @@ class DayBar extends Control:
 	var frac: float = 1.0
 	var warm: bool = false
 	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.07, 0.09, 0.9))
+		# a gauge, not a progress pill: a sunk track, a flat fill, a notch every tenth of the day
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.03, 0.04, 1.0))
 		var w: float = size.x * frac
 		if w >= 1.0:
-			var col := Color(1.0, 0.82, 0.22) if warm else Color(0.35, 0.78, 0.86)
+			var col := Color(1.0, 0.82, 0.22) if warm else Color(0.43, 0.6, 0.85)
 			draw_rect(Rect2(Vector2.ZERO, Vector2(w, size.y)), col)
-			draw_rect(Rect2(Vector2.ZERO, Vector2(w, 1.0)), col.lightened(0.35))
+			draw_rect(Rect2(Vector2.ZERO, Vector2(w, 1.0)), col.lightened(0.3))
+		for i in range(1, 10):
+			var x: float = floorf(size.x * i / 10.0)
+			draw_rect(Rect2(x, 0.0, 2.0, size.y), Color(0.03, 0.03, 0.04, 1.0))
 
 ## A section row of the shop's list: its name in the section's colour and a rule running on to the
 ## right edge, drawn - a Label cannot draw the rule, and a separator node beside it is a second row.
@@ -1261,14 +1393,46 @@ class SectionHead extends Control:
 	var col: Color = Color.WHITE
 	const FS := 12
 	func _draw() -> void:
+		# a stencilled tab in the section's colour with dark letters, then a rule to the edge
 		var font: Font = get_theme_default_font()
 		var cap: String = text.to_upper()
-		var base: float = size.y - 6.0
-		draw_string(font, Vector2(2.0, base), cap, HORIZONTAL_ALIGNMENT_LEFT, -1, FS, col)
 		var tw: float = font.get_string_size(cap, HORIZONTAL_ALIGNMENT_LEFT, -1, FS).x
-		var y: float = base - FS * 0.35
-		if size.x - tw > 20.0:
-			draw_line(Vector2(tw + 10.0, y), Vector2(size.x - 2.0, y), Color(col.r, col.g, col.b, 0.35), 1.0)
+		var top: float = 4.0
+		var h: float = size.y - top - 2.0
+		var tab_w: float = tw + 14.0
+		draw_colored_polygon(PackedVector2Array([Vector2(0, top), Vector2(tab_w + 6.0, top),
+			Vector2(tab_w, top + h), Vector2(0, top + h)]), col)
+		draw_string(font, Vector2(7.0, top + h * 0.5 + FS * 0.36), cap, HORIZONTAL_ALIGNMENT_LEFT, -1, FS,
+			Color(0.06, 0.06, 0.07))
+		var y: float = top + h - 1.0
+		if size.x - tab_w > 20.0:
+			draw_rect(Rect2(tab_w + 4.0, y, size.x - tab_w - 6.0, 1.0), Color(col.r, col.g, col.b, 0.45))
+
+## The shop's currency mark, drawn (rule 11): a flat octagonal token with a slot, the game's gold.
+class CoinIcon extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var r: float = minf(size.x, size.y) * 0.5 - 1.0
+		var pts := PackedVector2Array()
+		for i in 8:
+			var a: float = TAU * (i + 0.5) / 8.0
+			pts.append(c + Vector2(cos(a), sin(a)) * r)
+		draw_colored_polygon(pts, Color(0.83, 0.62, 0.24))
+		var inner := PackedVector2Array()
+		for p in pts:
+			inner.append(c + (p - c) * 0.62)
+		draw_colored_polygon(inner, Color(1.0, 0.82, 0.38))
+		draw_rect(Rect2(c.x - 1.0, c.y - r * 0.4, 2.0, r * 0.8), Color(0.55, 0.38, 0.12))
+
+## A padlock before a locked row's grade, drawn.
+class LockIcon extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(0.62, 0.64, 0.72)
+		draw_rect(Rect2(c.x - 6.0, c.y - 1.0, 12.0, 8.0), col)
+		draw_polyline(PackedVector2Array([c + Vector2(-4, -1), c + Vector2(-4, -5), c + Vector2(-2, -7),
+			c + Vector2(2, -7), c + Vector2(4, -5), c + Vector2(4, -1)]), col, 2.0)
+		draw_rect(Rect2(c.x - 1.0, c.y + 1.0, 2.0, 3.0), Color(0.06, 0.06, 0.07))
 
 # Иконки рисуем в коде: шрифт проекта не рендерит эмодзи (пустые кнопки — уже проходили).
 class PencilIcon extends Control:
