@@ -17,7 +17,12 @@ const TECH_UI := preload("res://tech_ui.tscn")
 ## call): it was a 48 px number in the top middle, inside the HUD, so the garage covered it. Its own
 ## CanvasLayer over everything keeps it in the garage too; G.show_fps (garage settings) hides it. The
 ## area is still a finger's (FPS_HIT): a tap opens the profiler, as before, outside the garage.
-const FPS_HIT := Vector2(96.0, 22.0)
+## The tap area grows UP from the corner, not along the bottom edge: a 22 px strip on the very edge sat
+## in the Android gesture zone and the profiler could no longer be opened on the tablet.
+const FPS_HIT := Vector2(140.0, 48.0)
+## Second door to the profiler, independent of where the counter stands or whether it is shown:
+## three fingers on the glass at once (outside the garage).
+const PERF_FINGERS := 3
 const FPS_LAYER := 90
 const FPS_EVERY := 0.25               # s between text updates: setting text reshapes the label
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
@@ -913,12 +918,20 @@ var _vmenu_open_ms: int = 0
 
 func _input(event: InputEvent) -> void:
 	# F3: the profiler (PC). On the phone a TAP ON THE FPS COUNTER opens it - no debug button of
-	# its own on screen; the counter is already there, in the bottom-right corner.
+	# its own on screen; the counter is already there, in the bottom-right corner. Or three fingers at once.
 	if event is InputEventKey and event.pressed and not event.echo \
 			and (event as InputEventKey).keycode == KEY_F3:
 		_toggle_perf_panel()
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			_perf_touches[st.index] = true
+			if _perf_touches.size() == PERF_FINGERS and not (_tech_ui != null and _tech_ui.visible):
+				_toggle_perf_panel()
+		else:
+			_perf_touches.erase(st.index)
 	# The icon's own finger leaving the glass ends its hold (see _vbtn_touch).
 	if event is InputEventScreenTouch and not event.pressed and event.index == _vbtn_touch:
 		_vbtn_touch_down = false
@@ -1339,6 +1352,7 @@ const PERF_REFRESH := 0.25
 var _perf_t: float = 0.0
 
 var _fps_lbl: Label = null
+var _perf_touches: Dictionary = {}
 var _fps_t: float = 0.0
 var _fps_shown: int = -1
 
