@@ -14,6 +14,13 @@ render_mode diffuse_lambert, specular_disabled;
 // bands (TerrainBiomes.apply_to_material) and the game the grass fade and the trample - so those
 // few are tuned in the biomes, everything else on the material.
 
+// A/B SWITCHES FOR THE DEVICE (uncomment one, run, compare FPS; the picture changes - for measuring
+// only, never commit one on). Each cuts one block, so the frame time it gives back is that block's cost:
+// #define PROBE_NO_DETAIL      // the detail fetch and its ~20 ALU a pixel
+// #define PROBE_NO_LIFT        // the grass/snow lift: hashes and the trample fetch in the VERTEX stage
+// #define PROBE_NO_TONE        // the slow tone noise (vnoise, 4 hashes a vertex)
+// #define PROBE_NO_HAZE        // the haze written to FOG
+// #define PROBE_FLAT_VERTEX    // the whole vertex colour block: v_* constant, only position + haze
 group_uniforms Texture;
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
 // tile used - R cracked earth, G sand ripples, B grass clumps, A broad patches. Masks, not colour:
@@ -98,6 +105,8 @@ group_uniforms Trample;
 uniform sampler2D trample_map : hint_default_black, filter_linear;
 uniform vec2  trample_center = vec2(0.0);
 uniform float trample_size   = 130.0;
+// set by ChunkTerrain.set_grass_trample: with no map there is nothing to fetch in the vertex stage
+uniform bool  trample_on     = false;
 group_uniforms;
 
 
@@ -122,7 +131,7 @@ global uniform vec4 haze_range;
 global uniform vec4 sun_dir;
 global uniform vec4 ground_amb;
 global uniform vec4 ground_sun;
-varying mediump vec3 v_sun;
+varying mediump float v_sun;   // the lambert term; ground_sun.rgb is a uniform, multiplied in the fragment
 // THE SUN'S SHADOW CASCADES (sun_shadows.gd): top-down windows of casters projected along the light,
 // near to far at 25 cm, 67 cm and 2 m a texel. Each window: uv = world.xz * x + yz, w = its half in
 // metres, 0 while that map is not built. ONE FETCH A PIXEL: which window a pixel reads is decided per
@@ -160,15 +169,20 @@ varying mediump float v_det;
 // stores half the varying memory per vertex in its binning pass): a colour ends 8-bit, and fp16 is
 // 11 bits of mantissa, so the picture cannot tell. World positions (v_wpos) and the shadow windows'
 // metres (v_shsel) stay highp - the detail's uv and the windows' signs need them.
-varying mediump vec3  v_base_col;
+// THE BASE COLOUR RIDES IN THE DAB PAIR (v_bd = base x dark, v_bl = base x light): the fragment's
+// base * mix(pd, pl, b) is mix(base*pd, base*pl, b), and past DETAIL_FAR both are 1 x base. Three
+// floats a vertex fewer; the products are interpolated instead of the factors - measured the same
+// picture (map_diff2.png).
 // THE DETAIL'S STRENGTHS, every one worked out per vertex with DETAIL_FAR's fade folded in, so the
 // fragment only multiplies: the dab tints (dark, light), the ripples a channel (bare sand, snow),
 // the cracks as 1 + x + y * R (the salt flat, the rock's facets), the patches.
-varying mediump vec3  v_pd;
-varying mediump vec3  v_pl;
-varying mediump vec3  v_rip;
+varying mediump vec3  v_bd;
+varying mediump vec3  v_bl;
+varying mediump vec2  v_rip;   // the sand and the snow weight; their tints are constants (RIP_SAND / RIP_SNOW), linear, so exact
 varying mediump vec2  v_crack;
-varying vec2  v_wpos;         // world x, z - the detail fetch and the shadow lookup
+varying vec2  v_wpos;
+const vec3 RIP_SAND = vec3(0.24, 0.30, 0.40);
+const vec3 RIP_SNOW = vec3(0.22, 0.16, 0.06);         // world x, z - the detail fetch and the shadow lookup
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -193,8 +207,8 @@ float blade_at(vec2 p, float amount) {
     }
     float h = grass_height * amount;
     vec2 t_uv = (p - trample_center) / trample_size + vec2(0.5);
-    if (t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
-        h -= clamp(texture(trample_map, t_uv).r, 0.0, 1.0) * grass_height * amount * 2.0;
+    if (trample_on && t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
+        h -= clamp(textureLod(trample_map, t_uv, 0.0).r, 0.0, 1.0) * grass_height * amount * 2.0;
     }
     return h;
 }
@@ -232,7 +246,7 @@ void vertex() {
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
     float ndl = dot(wn, normalize(sun_dir.xyz));
-    v_sun = ground_sun.rgb * clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
+    v_sun = clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
     v_shsel = vec4(1.0, 1.0, 1.0, 0.0);
     if (sun_shadow_strength > 0.0 && sun_shadow_uv0.w > 0.0) {
         vec2 sp = world_pos.xz;
@@ -287,7 +301,7 @@ void vertex() {
     // canyon under a mountain put brown blots on its snow
     float cliff_c = canyon * (1.0 - snow);
     vec3  rock_col = mix(color_rock.rgb, canyon_col * vec3(0.70, 0.64, 0.74), cliff_c);
-    v_base_col    = mix(zone, rock_col, rock_t);
+    vec3 v_base_col = mix(zone, rock_col, rock_t);
 
     // the painted pair, assembled in the colours' own order
     vec3 pd = mix(sand_dark,  mix(vec3(1.0), stroke_dark,  grass_detail), biome_grass);
@@ -310,16 +324,20 @@ void vertex() {
     v_base_col *= mix(0.78, grass_shade, grass_col);
     // a slow change of tone (~25 m) between the biome's cool shade and its warm light - the dabs'
     // pair, softened - so the 9 m tile never reads as a tile
+#ifdef PROBE_NO_TONE
+    float tone = 0.5;
+#else
     float tone = vnoise(world_pos.xz * 0.04 + vec2(5.0, 9.0));
+#endif
     v_base_col *= sqrt(mix(pd, pl, tone));
-    v_pd = mix(vec3(1.0), pd, v_det);
-    v_pl = mix(vec3(1.0), pl, v_det);
+    vec3 v_pd = mix(vec3(1.0), pd, v_det);
+    vec3 v_pl = mix(vec3(1.0), pl, v_det);
     // RIPPLES on bare sand and, softer, on snow (wind-blown): a tint, not a shade - on sand the crest
     // pale and the trough a deeper ochre, on snow the trough blue
     float bare = (1.0 - canyon) * (1.0 - rock_t) * (1.0 - salt);
     float sand_w = clamp((1.0 - biome_grass) * (1.0 - snow) * bare, 0.0, 1.0);
     float snow_w = clamp(snow * (1.0 - rock_t), 0.0, 1.0);
-    v_rip = (sand_w * vec3(0.24, 0.30, 0.40) + snow_w * vec3(0.22, 0.16, 0.06)) * ripple_strength * v_det;
+    v_rip = vec2(sand_w, snow_w) * (ripple_strength * v_det);
     // CRACKS: the salt flat's deep ones, the rock's light facets (mix(lo, 1.08, R) each, as 1 + x + y R)
     float salt_w = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
     float rock_w = rock_t * mix(1.0, 0.5, cliff_c) * rock_facets;
@@ -338,6 +356,9 @@ void vertex() {
     float amount = grass_amount;
     float drift = clamp(snow * (1.0 - rock_t), 0.0, 1.0);   // snow is painted over a canyon too
     float fade = 1.0 - smoothstep(grass_fade.x, grass_fade.y, ground_d);
+#ifdef PROBE_NO_LIFT
+    fade = 0.0;
+#endif
     if (fade > 0.0 && (amount > 0.03 || drift > 0.03)) {
         vec2 p = floor(world_pos.xz + 0.5);           // vertices stand on whole metres
         float lift;
@@ -356,11 +377,17 @@ void vertex() {
         v_base_col *= vec3(1.0) + lump * vec3(0.30, 0.24, 0.10);
         VERTEX.y += lift * fade;
     }
+    v_bd = v_base_col * v_pd;
+    v_bl = v_base_col * v_pl;
+#ifdef PROBE_FLAT_VERTEX
+    v_bd = vec3(0.5); v_bl = vec3(0.5); v_rip = vec2(0.0); v_crack = vec2(0.0);
+#endif
 }
 
 void fragment() {
-    mediump vec3 base_col = v_base_col;
+    mediump vec3 base_col = v_bd;
 
+#ifndef PROBE_NO_DETAIL
     // The detail masks, one fetch on the ground's plane (DETAIL_FAR above); every strength comes
     // from the vertex with the fade in it.
     if (v_det > 0.0) {
@@ -368,8 +395,10 @@ void fragment() {
         // the patches' strength is the uniform times v_det - a varying of it was one more slot a vertex
         mediump float k = (1.0 + (dt.a - 0.5) * (2.0 * patch_strength * v_det)) * (1.0 + v_crack.x + v_crack.y * dt.r);
         // each dab shifts the hue: dark ones toward the biome's cool shade, light ones its warm light
-        base_col = clamp(base_col * k * (vec3(1.0) + v_rip * (dt.g - 0.53)) * mix(v_pd, v_pl, dt.b), 0.0, 1.0);
+        mediump vec3 rip = RIP_SAND * v_rip.x + RIP_SNOW * v_rip.y;
+        base_col = clamp(k * (vec3(1.0) + rip * (dt.g - 0.53)) * mix(v_bd, v_bl, dt.b), 0.0, 1.0);
     }
+#endif
 
     ALBEDO    = base_col;
 #ifdef FAST_GROUND
@@ -386,10 +415,12 @@ void fragment() {
         }
         shade = s * v_shsel.w * sun_shadow_strength;
     }
-    ALBEDO   *= ground_amb.rgb + v_sun * (1.0 - shade);
+    ALBEDO   *= ground_amb.rgb + ground_sun.rgb * (v_sun * (1.0 - shade));
 #endif
     ROUGHNESS = 0.9;
 
     // the haze last, over everything: the air between the camera and the surface
+#ifndef PROBE_NO_HAZE
     FOG = vec4(world_haze.rgb, v_haze);
+#endif
 }

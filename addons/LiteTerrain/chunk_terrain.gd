@@ -2383,6 +2383,8 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 		m.set_shader_parameter("trample_map", tex)
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
+		# the shader fetches the map in its VERTEX stage only while one is handed over (glsl.gdshader)
+		m.set_shader_parameter("trample_on", tex != null)
 
 ## (узлов на экране, из них уровня 0, заданий в очереди) — видно, что именно рисуется.
 func render_stats() -> Vector3i:
