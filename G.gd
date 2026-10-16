@@ -255,7 +255,7 @@ var menu_battles: bool = true
 var build_on_pickup: bool = true
 ## The small FPS readout in the bottom-right corner (hud.gd `_fps_lbl`), over the garage too.
 var show_fps: bool = true
-## ЯЗЫК ИНТЕРФЕЙСА: "en" / "ru" / "uk". Конфиг устройства, а не прогресс — сброс мира его не
+## ЯЗЫК ИНТЕРФЕЙСА: код из LANGS ("en", "ru", "pt_BR", "zh_CN"...). Конфиг устройства, а не прогресс — сброс мира его не
 ## трогает. Пусто при первом запуске: язык берётся у системы (см. _apply_lang).
 var lang: String = ""
 # Куда игрок перетащил плавающие окна: имя окна -> [x, y]. Тоже конфиг, а не прогресс —
@@ -345,7 +345,7 @@ func _load_settings() -> void:
 ## Строим Translation в КОДЕ, а не через импорт .csv: импортёр работает только в редакторе, то
 ## есть перевод нельзя было бы ни добавить, ни проверить, не открыв Godot.
 const LANG_FILE := "res://i18n/strings.json"
-const LANGS := ["en", "ru", "uk"]
+const LANGS := ["en", "ru", "uk", "es", "pt_BR", "de", "fr", "tr", "ja", "ko", "zh_CN", "id"]
 
 func _load_translations() -> void:
 	if not FileAccess.file_exists(LANG_FILE):
@@ -395,10 +395,42 @@ func set_lang(code: String) -> void:
 ## всегда, а на остальных ровно настолько, насколько заполнен i18n/strings.json.
 func _apply_lang() -> void:
 	TranslationServer.set_locale(lang if LANGS.has(lang) else "en")
+	_apply_cjk_fonts()
+
+## CJK GLYPHS COME FROM THE GAME, NOT THE PHONE. The engine's Open Sans has no Han, kana or
+## Hangul, and its system fallback would shape every such string through the phone's own fonts
+## (CLAUDE.md §0.11: 147-528 ms for the first odd glyph). So three Noto Sans CJK SUBSETS ride along
+## (fonts/, only the characters i18n/strings.json and the language names use - rebuild them with
+## tools/subset_cjk_fonts.py after adding text) as fallbacks of the default font. They are always
+## attached, because the language list shows 日本語 / 한국어 / 简体中文 in every language; only the ORDER
+## follows the language, since one Han code point is drawn differently in Japan and in China.
+const CJK_FONTS := {"ja": "res://fonts/NotoSansJP-subset.otf", "ko": "res://fonts/NotoSansKR-subset.otf",
+		"zh": "res://fonts/NotoSansSC-subset.otf"}
+var _cjk_cache: Dictionary = {}
+
+func _apply_cjk_fonts() -> void:
+	var base: Font = ThemeDB.fallback_font
+	if base == null:
+		return
+	var first: String = "zh" if lang == "zh_CN" else ("ko" if lang == "ko" else "ja")
+	var order: Array = [first]
+	for k in ["ja", "zh", "ko"]:
+		if k != first:
+			order.append(k)
+	var list: Array[Font] = []
+	for k in order:
+		if not _cjk_cache.has(k):
+			_cjk_cache[k] = load(CJK_FONTS[k]) if ResourceLoader.exists(CJK_FONTS[k]) else null
+		if _cjk_cache[k] != null:
+			list.append(_cjk_cache[k])
+	base.fallbacks = list
 
 ## Каким языком интерфейс говорит СЕЙЧАС (для галочки в настройках).
 func current_lang() -> String:
-	var code: String = TranslationServer.get_locale().substr(0, 2)
+	var loc: String = TranslationServer.get_locale()
+	if LANGS.has(loc):
+		return loc
+	var code: String = loc.substr(0, 2)
 	return code if LANGS.has(code) else "en"
 
 # ═══ Прогрессия: стартовая фракция, грейды, древо технологий ══════════════════════
@@ -2231,6 +2263,10 @@ func _notification(what: int) -> void:
 			or what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_progress_dirty = true
 		_flush_progress()
+	# The engine's default font outlives every script: fonts left hanging on it are reported as
+	# "resources still in use at exit".
+	if what == NOTIFICATION_PREDELETE and ThemeDB.fallback_font != null:
+		ThemeDB.fallback_font.fallbacks = []
 
 func save_build(build_name: String, layout: Array) -> void:
 	saved_builds[build_name] = layout
