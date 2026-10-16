@@ -248,8 +248,7 @@ def fall():
 
 
 if __name__ == "__main__":
-    wind()
+    # the wind, the hit and the fall moved to art/intro_sfx.py (.ogg, CC0 recordings + synthesis);
+    # their old synthesis stays above for reference and is no longer written
     alarm()
-    hit()
     boom()
-    fall()

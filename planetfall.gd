@@ -98,9 +98,14 @@ const STREAKS := 28
 
 ## THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS (the player's call; Music.set_held): wind round the
 ## capsule from the start, the blow when the burnt piece strikes it, a quiet repeating alarm from
-## then, both until the blast, the blast, and the main piece falling, ending in its thud as it lands. Synthesised by art/intro_sounds.py; loaded
+## then, both until the blast, the blast, and the main piece falling, ending in its thud as it lands. The
+## alarm and the blast are synthesised by art/intro_sounds.py; the hit, the wind and the fall are CC0
+## recordings layered with synthesised air by art/intro_sfx.py (resources/intro/CREDITS.md). Loaded
 ## at run time, so a sound not imported yet is silence, never a script that fails to load.
-const SND := "res://resources/intro/intro_%s.wav"
+const SND := "res://resources/intro/intro_%s"
+const SND_EXT := {"wind": ".ogg", "alarm": ".wav", "hit": ".ogg", "boom": ".wav", "fall": ".ogg"}
+## the wind does not cut at the blast: it fades under the fall's swell over this long
+const WIND_OUT := 1.2
 const WIND_DB := -7.0
 const ALARM_DB := -15.0
 const BOOM_DB := -1.0
@@ -211,7 +216,7 @@ func _hold_music(on: bool) -> void:
 
 func _build_sound() -> void:
 	for which in ["wind", "alarm", "hit", "boom", "fall"]:
-		var path: String = SND % which
+		var path: String = (SND % which) + String(SND_EXT[which])
 		var st: AudioStream = load(path) if ResourceLoader.exists(path) else null
 		if st == null:
 			continue
@@ -238,6 +243,12 @@ func _tick_sound() -> void:
 		# in with the dissolving loading screen, a little faster and louder as the fall goes on
 		wind.volume_db = lerpf(-40.0, WIND_DB, smoothstep(0.0, 1.6, _t)) + (2.0 if _t >= T_HIT else 0.0)
 		wind.pitch_scale = lerpf(0.9, 1.12, clampf(_t / T_BOOM, 0.0, 1.0))
+		if _t >= T_BOOM:
+			# out under the blast and the fall's swell, equal-power-ish: linear in dB to -40, then stopped
+			var k: float = clampf((_t - T_BOOM) / WIND_OUT, 0.0, 1.0)
+			wind.volume_db = lerpf(WIND_DB + 2.0, -40.0, k)
+			if k >= 1.0:
+				wind.stop()
 	if _t >= T_HIT - HIT_PRE and _t < T_BOOM and not has_meta("snd_hit"):
 		set_meta("snd_hit", true)
 		_play("hit", HIT_DB)
@@ -246,10 +257,9 @@ func _tick_sound() -> void:
 		_play("alarm", ALARM_DB)
 	if _t >= T_BOOM and not has_meta("snd_boom"):
 		set_meta("snd_boom", true)
-		for n in ["wind", "alarm"]:
-			var p: AudioStreamPlayer = _snd.get(n)
-			if p != null:
-				p.stop()
+		var alarm_p: AudioStreamPlayer = _snd.get("alarm")
+		if alarm_p != null:
+			alarm_p.stop()
 		_play("boom", BOOM_DB)
 		_play("fall", FALL_DB)          # its thud is timed to land with the main piece
 

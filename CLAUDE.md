@@ -2174,14 +2174,19 @@ project: read it before claiming how anything works.
   zero opacity and a speck of burnt block inside the capsule in the first frames.
   **THE INTRO HAS ITS OWN SOUND AND THE MUSIC WAITS** (the player's design; `Music.set_held`, not the
   player's `enabled` switch): wind round the capsule from the start (a loop, louder and higher as it
-  falls); THE BLOW when the burnt piece strikes it (`intro_hit`: its whoosh in, the hull ringing as
-  a struck plate - inharmonic partials, each its own decay - a crunch, a scrape and debris rattling
+  falls); THE BLOW when the burnt piece strikes it (`intro_hit`: its whoosh in, then recorded heavy
+  metal and plate impacts, a crunch, a sub thump, a low bell for the ringing hull and debris pinging
   off, started `HIT_PRE` before `T_HIT` so the blow lands with the sparks); a quiet "piu-piu" alarm
-  loop from the hit, both loops cut at the blast; the blast; and the main
-  piece falling - a descending whistle and a rising rush ending in a thud timed to its landing
-  (`art/intro_sounds.py` `FALL_HIT` = `T_LAND[MAIN] - T_BOOM`). Synthesised by `art/intro_sounds.py`
-  into `resources/intro/intro_*.wav` (22 kHz mono; the loops carry a WAV `smpl` chunk, which the
-  importer's "Detect From WAV" reads - measured, both come in as forward loops), loaded at run time
+  loop from the hit, cut at the blast, while THE WIND FADES OUT over `WIND_OUT` (1.2 s) under the
+  blast and the fall's swell instead of cutting; the blast; and the main piece falling - a deep
+  rumble and a rising rush of air with a tumbling flutter (no whistle: the player found it did not
+  fit), ending in a heavy thud timed to its landing (`FALL_HIT` = `T_LAND[MAIN] - T_BOOM`).
+  The hit, the wind and the fall are `resources/intro/intro_{hit,wind,fall}.ogg` from
+  `art/intro_sfx.py`: CC0 Kenney recordings kept in `art/sfx_src/kenney` (a `.gdignore` keeps them
+  out of the import) layered with synthesised air; credits in `resources/intro/CREDITS.md`; the
+  wind's loop is `loop=true` in its `.import`. The alarm and the blast are still synthesised by
+  `art/intro_sounds.py` into `.wav` (22 kHz mono; the alarm's loop is a WAV `smpl` chunk, read by
+  the importer's "Detect From WAV"). `SND_EXT` names each one's extension. Loaded at run time
   so a sound not yet imported is silence, never a script that fails to load; a skip stops them.
   THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"):
   `world_persist._play_intro` gives it `INTRO_WAIT` to start and `INTRO_RUN` to finish, and on a
