@@ -97,6 +97,7 @@ func _ready() -> void:
 	_build_filter_column()
 	_build_shop_head()
 	_build_stats_panel()
+	_build_shop_v2()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
 	# пересобираем слоты, чтобы в ряду ОСТАЛОСЬ ровно COLS. Гейт по изменению размера слота,
@@ -318,11 +319,14 @@ func _build_shop_head() -> void:
 func _update_shop_head(force: bool = false) -> void:
 	if _shop_head == null:
 		return
-	_shop_head.visible = _tab == TAB_SHOP
-	if not _shop_head.visible:
+	_shop_head.visible = false              # the second cut keeps the clock in its own header
+	if _tab != TAB_SHOP:
 		return
 	if G.proving_ground:
 		_shop_cap.text = tr("Proving ground: everything in stock")
+		if _sv_time != null:
+			_sv_time.text = "∞"
+			_sv_gauge.visible = false
 		_shop_time.visible = false
 		_shop_bar.visible = false
 		return
@@ -340,6 +344,7 @@ func _update_shop_head(force: bool = false) -> void:
 	_shop_bar.frac = clampf(left / G.SHOP_DAY, 0.0, 1.0)
 	_shop_bar.warm = last
 	_shop_bar.queue_redraw()
+	_sv_update_clock(sec, _shop_bar.frac, last)
 
 ## Today's counts under the countdown: the whole window, not what the filter shows.
 func _update_shop_counts() -> void:
@@ -917,6 +922,12 @@ func _rebuild_grid(filter: String) -> void:
 	if _grid == null:
 		return
 	_last_slot_side = _slot_side()
+	if _tab == TAB_SHOP and _sv_root != null:
+		_hide_slots_from(0)
+		_hide_heads_from(0)
+		_set_empty_text("")
+		_sv_rebuild()
+		return
 	if _tab == TAB_BUILDS:
 		_hide_heads_from(0)
 		_build_builds_tab()
@@ -1674,7 +1685,7 @@ func _select_tab(idx: int) -> void:
 		# В СПРАВОЧНИКЕ ФИЛЬТРА БОЛЬШЕ НЕТ: там теперь граф, а не сетка плиток, и «показать только
 		# оружие» в дереве означало бы дерево с выломанной серединой — связи ведут через скрытые
 		# узлы. Фильтр остался там, где он отбирает ТОВАР: магазин и инвентарь.
-		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY)
+		_filter_col.visible = (_tab == TAB_INVENTORY)
 	if _codex_col:
 		_codex_col.visible = (_tab == TAB_CODEX)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
@@ -1685,8 +1696,10 @@ func _select_tab(idx: int) -> void:
 	var is_tech: bool = _tab == TAB_TECH
 	var is_build: bool = _tab == TAB_BUILD
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
+	var is_shop: bool = _tab == TAB_SHOP
 	if grid_scroll:
-		grid_scroll.visible = not (extra_list or is_tech or is_build or is_codex)
+		grid_scroll.visible = not (extra_list or is_tech or is_build or is_codex or is_shop)
+	_shop_v2_show(is_shop)
 	if _codex_root:
 		_codex_root.visible = is_codex
 	if _extra_scroll:
@@ -1694,8 +1707,8 @@ func _select_tab(idx: int) -> void:
 	if _tech_root:
 		_tech_root.visible = is_tech
 	if _search:
-		_search.visible = not (extra_list or is_tech or is_build or is_codex)
-	_widen_left_panel(is_tech or is_codex)   # графу нужна та же ширина, что и древу
+		_search.visible = not (extra_list or is_tech or is_build or is_codex or is_shop)
+	_widen_left_panel(is_tech or is_codex or is_shop)   # графу нужна та же ширина, что и древу
 	_show_left_panel(not is_build)
 	_set_world_clickthrough(is_build)
 	tab_changed.emit(_tab)
@@ -1749,10 +1762,17 @@ func tutorial_target(key: String) -> Control:
 		"extra":         return _extra_scroll
 		"tech":          return _tech_root
 		"filters":
+			if _tab == TAB_SHOP and _sv_tabs.has("all"):
+				return _sv_tabs["all"] as Control
 			if _filter_col != null and _filter_col.get_child_count() > 0:
 				return _filter_col.get_child(0) as Control
 			return null
 		"slot":
+			if _tab == TAB_SHOP:
+				for t in _sv_tiles:
+					if (t as Control).visible:
+						return t as Control
+				return null
 			# Первый ВИДИМЫЙ: в пуле за ним стоят спрятанные слоты прошлых вкладок.
 			if _grid != null:
 				for c in _grid.get_children():
@@ -2773,3 +2793,648 @@ func _tech_do_research() -> void:
 	_say(tr("Researched: %s! +1 block already in inventory.") % _block_name(bt))
 	# G.research эмитит progress_changed → _on_progress_changed перестроит вкладку
 	# (нода станет ✓, соседи откроются) — тут ничего пересобирать не нужно.
+
+# ── SHOP, SECOND CUT: tiles, a category strip, a detail panel (the player's call) ────────────────
+## The first restyle was still a list you bought from blind. The layout now follows what real
+## crafting/shop screens do (Rust's crafting menu, TerraTech's block palette): a grid of BIG
+## portraits, because the 3D block is the thing being sold; categories along the top; and a tap
+## SELECTS, the buy happens in a fixed detail panel on the right with the numbers, a quantity and the
+## crafting comparison - the right panel's machine stats step aside while the shop is open.
+## All logic is the old one: the window is `_items` from `_load_items`, the filter `_shop_filter`,
+## the buy `_buy` (called once per unit, so every gate is asked every time).
+const SV_TILE := Vector2(128.0, 160.0)
+const SV_PORTRAIT := 104.0
+const SV_INK := Color(0.9, 0.9, 0.93)
+const SV_DIM := Color(0.56, 0.57, 0.64)
+const SV_BG := Color(0.07, 0.07, 0.085)
+const SV_TILE_BG := Color(0.115, 0.113, 0.135)
+## ONE accent, the amber of the block art's "pop" (ART_STYLE §1): selection, sale, the buy button.
+const SV_ACCENT := Color(0.86, 0.58, 0.22)
+const SV_TABS := [
+	["all", "All"], ["blocks", "Blocks"], ["wheels", "Wheels"],
+	["attack", "Attack"], ["factory", "Factory"], ["power", "Power"],
+]
+
+var _sv_root: VBoxContainer = null
+var _sv_grid: HFlowContainer = null
+var _sv_search: LineEdit = null
+var _sv_time: Label = null
+var _sv_gauge: DayBar = null
+var _sv_count: Label = null
+var _sv_tabs: Dictionary = {}
+var _sv_tiles: Array = []
+var _sv_heads: Array = []
+var _sv_sel: int = -1
+var _sv_qty: int = 1
+var _sv_detail: VBoxContainer = null
+var _sv_hidden_right: Array = []
+var _sv_d: Dictionary = {}           # detail widgets by name
+var _sv_num_font: FontVariation = null
+
+func _sv_font() -> FontVariation:
+	if _sv_num_font == null:
+		_sv_num_font = FontVariation.new()
+		_sv_num_font.base_font = ThemeDB.fallback_font
+		_sv_num_font.variation_embolden = 0.9
+		_sv_num_font.spacing_glyph = -1
+	return _sv_num_font
+
+func _sv_label(fs: int, col: Color, bold: bool = false) -> Label:
+	var l := Label.new()
+	l.add_theme_font_size_override("font_size", fs)
+	l.add_theme_color_override("font_color", col)
+	if bold:
+		l.add_theme_font_override("font", _sv_font())
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+func _sv_flat(bg: Color, edge: Color = Color(0, 0, 0, 0), bottom: int = 0) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = edge
+	sb.border_width_bottom = bottom
+	sb.anti_aliasing = false
+	sb.content_margin_left = 10.0
+	sb.content_margin_right = 10.0
+	sb.content_margin_top = 4.0
+	sb.content_margin_bottom = 4.0
+	return sb
+
+func _build_shop_v2() -> void:
+	var vb: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB")
+	if vb == null:
+		return
+	_sv_root = VBoxContainer.new()
+	_sv_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sv_root.add_theme_constant_override("separation", 0)
+	_sv_root.visible = false
+	vb.add_child(_sv_root)
+	# HEADER: categories on the left, the day on the right - one line, no box round it.
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 2)
+	_sv_root.add_child(head)
+	for t in SV_TABS:
+		var b := SvTab.new()
+		b.key = String(t[0])
+		b.word = tr(String(t[1]))
+		b.toggle_mode = true
+		var tw: float = ThemeDB.fallback_font.get_string_size(b.word.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		b.custom_minimum_size = Vector2(maxf(64.0, tw + 22.0), 56)
+		b.add_theme_font_size_override("font_size", 13)
+		b.add_theme_color_override("font_color", SV_DIM)
+		b.add_theme_color_override("font_hover_color", SV_INK)
+		b.add_theme_color_override("font_pressed_color", SV_INK)
+		b.add_theme_color_override("font_hover_pressed_color", SV_INK)
+		for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			b.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		b.pressed.connect(_sv_pick_tab.bind(b.key))
+		head.add_child(b)
+		_sv_tabs[b.key] = b
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(gap)
+	var day := VBoxContainer.new()
+	day.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	day.add_theme_constant_override("separation", 2)
+	day.tooltip_text = tr("The shop restocks once a game day. Blocks researched today join at the next restock.")
+	head.add_child(day)
+	var dr := HBoxContainer.new()
+	dr.alignment = BoxContainer.ALIGNMENT_END
+	dr.add_theme_constant_override("separation", 8)
+	dr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	day.add_child(dr)
+	var cap := _sv_label(11, SV_DIM)
+	cap.text = tr("Restock in").to_upper()
+	cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dr.add_child(cap)
+	_sv_time = _sv_label(22, SV_INK, true)
+	dr.add_child(_sv_time)
+	_sv_gauge = DayBar.new()
+	_sv_gauge.custom_minimum_size = Vector2(150, 4)
+	_sv_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	day.add_child(_sv_gauge)
+	var rule := ColorRect.new()
+	rule.color = Color(0.2, 0.2, 0.24)
+	rule.custom_minimum_size = Vector2(0, 1)
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sv_root.add_child(rule)
+	# THE GRID on a faint build grid: the same 1 m cell the blocks are made on.
+	var back := SvBack.new()
+	back.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sv_root.add_child(back)
+	var scroll := ScrollContainer.new()
+	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	back.add_child(scroll)
+	var pad := MarginContainer.new()
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		pad.add_theme_constant_override("margin_" + side, 8)
+	scroll.add_child(pad)
+	_sv_grid = HFlowContainer.new()
+	_sv_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sv_grid.add_theme_constant_override("h_separation", 6)
+	_sv_grid.add_theme_constant_override("v_separation", 6)
+	pad.add_child(_sv_grid)
+	_sv_grid.resized.connect(_sv_fit_heads)
+	# FOOT: today's count and the search, secondary - small, at the bottom.
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 10)
+	_sv_root.add_child(foot)
+	_sv_count = _sv_label(12, SV_DIM)
+	_sv_count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sv_count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(_sv_count)
+	_sv_search = LineEdit.new()
+	_sv_search.placeholder_text = tr("Search")
+	_sv_search.custom_minimum_size = Vector2(220, 44)
+	_sv_search.clear_button_enabled = true
+	_sv_search.add_theme_stylebox_override("normal", _sv_flat(SV_BG, Color(0.22, 0.22, 0.26), 1))
+	_sv_search.add_theme_stylebox_override("focus", _sv_flat(SV_BG, SV_ACCENT, 1))
+	_sv_search.text_changed.connect(func(_t: String) -> void: _sv_rebuild())
+	foot.add_child(_sv_search)
+	_build_shop_detail()
+
+func _build_shop_detail() -> void:
+	var right: Node = get_node_or_null("Root/Main/RightPanel/RightVB")
+	if right == null:
+		return
+	_sv_detail = VBoxContainer.new()
+	_sv_detail.visible = false
+	_sv_detail.add_theme_constant_override("separation", 8)
+	right.add_child(_sv_detail)
+	var well := PanelContainer.new()
+	well.add_theme_stylebox_override("panel", _sv_flat(SV_BG, Color(0.2, 0.2, 0.24), 1))
+	_sv_detail.add_child(well)
+	var pic := TextureRect.new()
+	pic.custom_minimum_size = Vector2(0, 190)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	well.add_child(pic)
+	_sv_d["pic"] = pic
+	var tag := _sv_label(11, SV_DIM)
+	_sv_detail.add_child(tag)
+	_sv_d["tag"] = tag
+	var nm := _sv_label(24, SV_INK, true)
+	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(nm)
+	_sv_d["name"] = nm
+	var desc := _sv_label(13, Color(0.74, 0.75, 0.8))
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(desc)
+	_sv_d["desc"] = desc
+	var stats := _sv_label(12, SV_DIM)
+	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(stats)
+	_sv_d["stats"] = stats
+	var craft := _sv_label(12, SV_DIM)
+	craft.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(craft)
+	_sv_d["craft"] = craft
+	var sep := ColorRect.new()
+	sep.color = Color(0.2, 0.2, 0.24)
+	sep.custom_minimum_size = Vector2(0, 1)
+	_sv_detail.add_child(sep)
+	var pr := HBoxContainer.new()
+	pr.add_theme_constant_override("separation", 6)
+	_sv_detail.add_child(pr)
+	var coin := CoinIcon.new()
+	coin.custom_minimum_size = Vector2(20, 20)
+	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pr.add_child(coin)
+	var price := _sv_label(26, SV_INK, true)
+	pr.add_child(price)
+	_sv_d["price"] = price
+	var was := _sv_label(13, SV_DIM)
+	was.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pr.add_child(was)
+	_sv_d["was"] = was
+	var stock := _sv_label(13, SV_DIM)
+	stock.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	stock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pr.add_child(stock)
+	_sv_d["stock"] = stock
+	var qr := HBoxContainer.new()
+	qr.add_theme_constant_override("separation", 0)
+	_sv_detail.add_child(qr)
+	var minus := Button.new()
+	minus.text = "–"
+	qr.add_child(minus)
+	var qty := _sv_label(20, SV_INK, true)
+	qty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	qty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	qty.custom_minimum_size = Vector2(64, 52)
+	qr.add_child(qty)
+	_sv_d["qty"] = qty
+	var plus := Button.new()
+	plus.text = "+"
+	qr.add_child(plus)
+	for b in [minus, plus]:
+		(b as Button).custom_minimum_size = Vector2(52, 52)
+		(b as Button).add_theme_font_size_override("font_size", 22)
+		(b as Button).add_theme_stylebox_override("normal", _sv_flat(SV_TILE_BG, Color(0.24, 0.24, 0.29), 1))
+		(b as Button).add_theme_stylebox_override("hover", _sv_flat(Color(0.15, 0.15, 0.18), Color(0.3, 0.3, 0.36), 1))
+		(b as Button).add_theme_stylebox_override("pressed", _sv_flat(SV_BG, SV_ACCENT, 1))
+		(b as Button).add_theme_stylebox_override("disabled", _sv_flat(SV_BG))
+	minus.pressed.connect(_sv_step.bind(-1))
+	plus.pressed.connect(_sv_step.bind(1))
+	_sv_d["minus"] = minus
+	_sv_d["plus"] = plus
+	var total := _sv_label(13, SV_DIM)
+	total.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	qr.add_child(total)
+	_sv_d["total"] = total
+	var buy := Button.new()
+	buy.custom_minimum_size = Vector2(0, 60)
+	buy.add_theme_font_override("font", _sv_font())
+	buy.add_theme_font_size_override("font_size", 20)
+	buy.add_theme_color_override("font_color", Color(0.08, 0.06, 0.03))
+	buy.add_theme_color_override("font_hover_color", Color(0.08, 0.06, 0.03))
+	buy.add_theme_color_override("font_pressed_color", Color(0.08, 0.06, 0.03))
+	buy.add_theme_color_override("font_disabled_color", SV_DIM)
+	buy.add_theme_stylebox_override("normal", _sv_flat(SV_ACCENT, SV_ACCENT.darkened(0.45), 3))
+	buy.add_theme_stylebox_override("hover", _sv_flat(SV_ACCENT.lightened(0.1), SV_ACCENT.darkened(0.45), 3))
+	buy.add_theme_stylebox_override("pressed", _sv_flat(SV_ACCENT.darkened(0.15), SV_ACCENT.darkened(0.45), 1))
+	buy.add_theme_stylebox_override("disabled", _sv_flat(Color(0.13, 0.13, 0.15), Color(0.2, 0.2, 0.24), 1))
+	buy.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	buy.pressed.connect(_sv_buy)
+	_sv_detail.add_child(buy)
+	_sv_d["buy"] = buy
+	var why := _sv_label(12, POOR_COL)
+	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(why)
+	_sv_d["why"] = why
+	var empty := _sv_label(14, SV_DIM)
+	empty.text = tr("Tap a block to see it here.")
+	empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sv_detail.add_child(empty)
+	_sv_d["empty"] = empty
+
+## Shop open: the old list, its strip and the machine stats step aside; leaving puts them back.
+func _shop_v2_show(on: bool) -> void:
+	if _sv_root == null:
+		return
+	_sv_root.visible = on
+	var body: Control = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body") as Control
+	if body != null:
+		body.visible = not on
+	var right: Node = get_node_or_null("Root/Main/RightPanel/RightVB")
+	var rp: Control = get_node_or_null("Root/Main/RightPanel") as Control
+	if on and _sv_hidden_right.is_empty() and right != null:
+		for c in right.get_children():
+			if c != _sv_detail and (c as Control).visible:
+				(c as Control).visible = false
+				_sv_hidden_right.append(c)
+	elif not on:
+		for c in _sv_hidden_right:
+			if is_instance_valid(c):
+				(c as Control).visible = true
+		_sv_hidden_right.clear()
+	if _sv_detail != null:
+		_sv_detail.visible = on
+	if rp != null:
+		rp.size_flags_vertical = Control.SIZE_FILL if on else Control.SIZE_SHRINK_BEGIN
+		rp.custom_minimum_size.x = 400.0 if on else 340.0
+	if on:
+		for k in _sv_tabs:
+			(_sv_tabs[k] as Button).button_pressed = k == _shop_filter
+
+func _sv_pick_tab(key: String) -> void:
+	_set_shop_filter(key)
+	for k in _sv_tabs:
+		(_sv_tabs[k] as Button).button_pressed = k == key
+
+func _sv_tile_at(i: int) -> SvTile:
+	while _sv_tiles.size() <= i:
+		var t := SvTile.new()
+		t.custom_minimum_size = SV_TILE
+		t.num_font = _sv_font()
+		for st in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
+			t.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		t.pressed.connect(_sv_select.bind(t))
+		_sv_tiles.append(t)
+		_sv_grid.add_child(t)
+	return _sv_tiles[i]
+
+func _sv_head_at(i: int) -> SectionHead:
+	while _sv_heads.size() <= i:
+		var h := SectionHead.new()
+		h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_sv_heads.append(h)
+		_sv_grid.add_child(h)
+	return _sv_heads[i]
+
+func _sv_rebuild() -> void:
+	if _sv_grid == null:
+		return
+	var f: String = _sv_search.text.strip_edges().to_lower() if _sv_search else ""
+	var seq: Array = []
+	var n := 0
+	var nh := 0
+	var group := -1
+	var sel_seen := false
+	var row_w: float = maxf(_sv_grid.size.x, SV_TILE.x)
+	for it in _items:
+		if f != "" and not str(it["name"]).to_lower().contains(f):
+			continue
+		var g: int = _shop_group(it)
+		if g != group:
+			group = g
+			var h: SectionHead = _sv_head_at(nh)
+			_fill_head(h, g)
+			h.col = SV_ACCENT if g == SHOP_SALE else (SV_INK if g == SHOP_TODAY else SV_DIM)
+			h.custom_minimum_size = Vector2(row_w, HEAD_H)
+			seq.append(h)
+			nh += 1
+		var t: SvTile = _sv_tile_at(n)
+		var bt: int = int(it["type"])
+		t.bt = bt
+		t.title = str(it["name"])
+		t.icon_tex = Icons.get_icon(bt)
+		t.price = int(it["price"])
+		t.was = int(it.get("was", t.price))
+		t.left = int(it.get("left", -1))
+		t.sale = G.shop_sale_pct(bt)
+		var m: Dictionary = G.BLOCK_META.get(bt, {})
+		t.grade = int(m.get("g", 1))
+		t.locked = not G.is_block_shop_unlocked(bt)
+		t.poor = G.money < t.price
+		t.selected = bt == _sv_sel
+		sel_seen = sel_seen or t.selected
+		t.visible = true
+		t.queue_redraw()
+		seq.append(t)
+		n += 1
+	for i in range(n, _sv_tiles.size()):
+		(_sv_tiles[i] as Control).visible = false
+	for i in range(nh, _sv_heads.size()):
+		(_sv_heads[i] as Control).visible = false
+	for i in seq.size():
+		if (seq[i] as Node).get_index() != i:
+			_sv_grid.move_child(seq[i], i)
+	if not sel_seen:
+		_sv_sel = -1
+	_update_shop_counts()
+	if _sv_count != null and _shop_info != null:
+		_sv_count.text = _shop_info.text if n > 0 else (tr("Nothing found") if not _items.is_empty() else tr("Shop empty"))
+	_sv_fill_detail()
+
+func _sv_fit_heads() -> void:
+	for h in _sv_heads:
+		(h as Control).custom_minimum_size.x = maxf(_sv_grid.size.x, SV_TILE.x)
+
+func _sv_select(t: SvTile) -> void:
+	if _sv_sel != t.bt:
+		_sv_qty = 1
+	_sv_sel = t.bt
+	for o in _sv_tiles:
+		(o as SvTile).selected = (o as SvTile).visible and (o as SvTile).bt == _sv_sel
+		(o as SvTile).queue_redraw()
+	_sv_fill_detail()
+
+func _sv_item(bt: int) -> Dictionary:
+	for it in _items:
+		if int(it["type"]) == bt:
+			return it
+	return {}
+
+## How many of the selected block one press can buy now: stock and money both bound it.
+func _sv_max(it: Dictionary) -> int:
+	var price: int = int(it["price"])
+	var cap: int = 99 if int(it.get("left", -1)) < 0 else int(it["left"])
+	if price > 0:
+		cap = mini(cap, int(G.money / price))
+	return cap
+
+func _sv_step(d: int) -> void:
+	var it: Dictionary = _sv_item(_sv_sel)
+	if it.is_empty():
+		return
+	_sv_qty = clampi(_sv_qty + d, 1, maxi(_sv_max(it), 1))
+	_sv_fill_detail()
+
+func _sv_buy() -> void:
+	var it: Dictionary = _sv_item(_sv_sel)
+	if it.is_empty() or not G.is_block_shop_unlocked(_sv_sel):
+		return
+	var bt: int = _sv_sel
+	var n: int = mini(_sv_qty, maxi(_sv_max(it), 0))
+	for i in n:
+		_buy(bt, G.shop_price_now(bt))     # each unit through the one door: money and stock asked again
+	_sv_qty = 1
+
+func _sv_fill_detail() -> void:
+	if _sv_detail == null:
+		return
+	var it: Dictionary = _sv_item(_sv_sel)
+	var has: bool = not it.is_empty()
+	for k in ["pic", "tag", "name", "desc", "stats", "craft", "price", "was", "stock", "qty",
+			"minus", "plus", "total", "buy", "why"]:
+		(_sv_d[k] as Control).visible = has
+	(_sv_d["pic"] as Control).get_parent().visible = has
+	(_sv_d["empty"] as Control).visible = not has
+	if not has:
+		return
+	var bt: int = _sv_sel
+	var m: Dictionary = G.BLOCK_META.get(bt, {})
+	var fac: String = String(m.get("f", "start"))
+	var fname: String = tr(String((G.FACTIONS.get(fac, {"name": fac}) as Dictionary)["name"]))
+	(_sv_d["pic"] as TextureRect).texture = Icons.get_icon(bt)
+	(_sv_d["tag"] as Label).text = ("%s  ·  " % fname + tr("Grade %d") % int(m.get("g", 1))).to_upper()
+	(_sv_d["name"] as Label).text = str(it["name"])
+	(_sv_d["desc"] as Label).text = tr(String(G.BLOCK_DESC.get(bt, "")))
+	(_sv_d["stats"] as Label).text = _codex_stats(bt)
+	var price: int = int(it["price"])
+	var mat: int = 0
+	var rec: Dictionary = G.block_recipe(bt)
+	for k in rec:
+		mat += G.base_price(String(k)) * int(rec[k])
+	var craft: Label = _sv_d["craft"]
+	if mat > 0:
+		craft.text = tr("Craft instead: materials %d (%s) - the shop asks %+d%%") % [mat,
+				G.recipe_text(rec), int(round((float(price) / float(mat) - 1.0) * 100.0))]
+	else:
+		craft.text = ""
+	(_sv_d["price"] as Label).text = str(price)
+	var off: int = G.shop_sale_pct(bt)
+	(_sv_d["was"] as Label).text = (tr("was %d") % int(it.get("was", price)) + "  −%d%%" % off) if off > 0 else ""
+	(_sv_d["was"] as Label).add_theme_color_override("font_color", SV_ACCENT)
+	var left: int = int(it.get("left", -1))
+	(_sv_d["stock"] as Label).text = tr("%d left today") % left if left > 0 else tr("Always in stock")
+	var locked: bool = not G.is_block_shop_unlocked(bt)
+	var mx: int = _sv_max(it)
+	_sv_qty = clampi(_sv_qty, 1, maxi(mx, 1))
+	(_sv_d["qty"] as Label).text = str(_sv_qty)
+	(_sv_d["minus"] as Button).disabled = locked or _sv_qty <= 1
+	(_sv_d["plus"] as Button).disabled = locked or _sv_qty >= mx
+	var cost: int = price * _sv_qty
+	(_sv_d["total"] as Label).text = tr("Total %d") % cost
+	(_sv_d["total"] as Label).add_theme_color_override("font_color", POOR_COL if G.money < cost else SV_DIM)
+	var buy: Button = _sv_d["buy"]
+	var why: Label = _sv_d["why"]
+	buy.text = (tr("Buy") + ("  ×%d" % _sv_qty if _sv_qty > 1 else "")).to_upper()
+	buy.disabled = locked or mx <= 0
+	why.text = ""
+	if locked:
+		if not m.is_empty() and G.grade(fac) < int(m["g"]):
+			why.text = tr("Requires license grade %d") % int(m["g"])
+		else:
+			why.text = tr("Research in the tech tree")
+	elif G.money < price:
+		why.text = tr("Not enough money: %d more") % (price - int(G.money))
+
+## The restock clock in the shop's header; called with the old strip's numbers.
+func _sv_update_clock(sec: int, frac: float, last: bool) -> void:
+	if _sv_time == null:
+		return
+	_sv_time.text = "%d:%02d" % [sec / 60, sec % 60]
+	_sv_time.add_theme_color_override("font_color", SV_ACCENT if last else SV_INK)
+	_sv_gauge.frac = frac
+	_sv_gauge.warm = last
+	_sv_gauge.queue_redraw()
+
+## A category tab: a drawn pictogram over a short word, an amber rule under the chosen one.
+class SvTab extends Button:
+	var key: String = ""
+	var word: String = ""
+	func _draw() -> void:
+		var on: bool = button_pressed
+		var col := Color(0.9, 0.9, 0.93) if on else Color(0.56, 0.57, 0.64)
+		var c := Vector2(size.x * 0.5, 15.0)
+		match key:
+			"all":
+				for i in 4:
+					draw_rect(Rect2(c + Vector2(-8 + (i % 2) * 9, -8 + (i / 2) * 9), Vector2(7, 7)), col)
+			"blocks":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(0, -9), c + Vector2(8, -5),
+					c + Vector2(0, -1), c + Vector2(-8, -5)]), col)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-8, -4), c + Vector2(-1, 0),
+					c + Vector2(-1, 9), c + Vector2(-8, 5)]), col.darkened(0.25))
+				draw_colored_polygon(PackedVector2Array([c + Vector2(8, -4), c + Vector2(1, 0),
+					c + Vector2(1, 9), c + Vector2(8, 5)]), col.darkened(0.45))
+			"wheels":
+				draw_arc(c, 8.0, 0.0, TAU, 8, col, 3.0)
+				draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), col)
+			"attack":
+				draw_arc(c, 7.0, 0.0, TAU, 12, col, 2.0)
+				draw_line(c + Vector2(-11, 0), c + Vector2(-4, 0), col, 2.0)
+				draw_line(c + Vector2(4, 0), c + Vector2(11, 0), col, 2.0)
+				draw_line(c + Vector2(0, -11), c + Vector2(0, -4), col, 2.0)
+				draw_line(c + Vector2(0, 4), c + Vector2(0, 11), col, 2.0)
+			"factory":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-10, 9), c + Vector2(-10, -1),
+					c + Vector2(-4, 3), c + Vector2(-4, -1), c + Vector2(2, 3), c + Vector2(2, -9),
+					c + Vector2(7, -9), c + Vector2(7, 9)]), col)
+			"power":
+				draw_colored_polygon(PackedVector2Array([c + Vector2(2, -10), c + Vector2(-6, 2),
+					c + Vector2(0, 2), c + Vector2(-2, 10), c + Vector2(6, -2), c + Vector2(0, -2)]), col)
+		var font: Font = get_theme_default_font()
+		var cap: String = word.to_upper()
+		var tw: float = font.get_string_size(cap, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+		draw_string(font, Vector2((size.x - tw) * 0.5, 44.0), cap, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col)
+		if on:
+			draw_rect(Rect2(6.0, size.y - 3.0, size.x - 12.0, 3.0), Color(0.86, 0.58, 0.22))
+
+
+## The tile area's back: a faint grid on the block's own cell, so the shop sits on the build floor.
+class SvBack extends Control:
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.07, 0.07, 0.085))
+		var step := 32.0
+		var col := Color(1, 1, 1, 0.025)
+		var x := 0.0
+		while x < size.x:
+			draw_line(Vector2(x, 0), Vector2(x, size.y), col, 1.0)
+			x += step
+		var y := 0.0
+		while y < size.y:
+			draw_line(Vector2(0, y), Vector2(size.x, y), col, 1.0)
+			y += step
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			queue_redraw()
+
+## One block for sale, drawn whole: the portrait big, grade top-left, stock top-right, a price bar.
+## Shape follows the blocks: a box with one CUT corner and lighter edge lines, not a rounded card.
+class SvTile extends Button:
+	var bt: int = 0
+	var title: String = ""
+	var icon_tex: Texture2D = null
+	var price: int = 0
+	var was: int = 0
+	var left: int = -1
+	var sale: int = 0
+	var grade: int = 1
+	var locked: bool = false
+	var poor: bool = false
+	var selected: bool = false
+	var num_font: Font = null
+	const CUT := 12.0
+	const BAR := 30.0
+	func _draw() -> void:
+		var w: float = size.x
+		var h: float = size.y
+		var font: Font = get_theme_default_font()
+		var nf: Font = num_font if num_font != null else font
+		var body := PackedVector2Array([Vector2(0, 0), Vector2(w - CUT, 0), Vector2(w, CUT),
+			Vector2(w, h), Vector2(0, h)])
+		var bg := Color(0.115, 0.113, 0.135)
+		if is_hovered() and not locked:
+			bg = Color(0.14, 0.138, 0.165)
+		draw_colored_polygon(body, bg)
+		# edge lines as on the models: lighter along the top, darker along the bottom
+		draw_line(Vector2(0, 0.5), Vector2(w - CUT, 0.5), Color(0.26, 0.26, 0.31), 1.0)
+		draw_line(Vector2(w - CUT, 0.5), Vector2(w - 0.5, CUT), Color(0.26, 0.26, 0.31), 1.0)
+		draw_line(Vector2(0.5, 0), Vector2(0.5, h), Color(0.18, 0.18, 0.22), 1.0)
+		# the portrait
+		var pr := Rect2(Vector2((w - 104.0) * 0.5, 16.0), Vector2(104.0, 104.0))
+		if icon_tex != null:
+			var tint := Color(0.35, 0.35, 0.4, 0.8) if locked else Color.WHITE
+			draw_texture_rect(icon_tex, pr, false, tint)
+		# grade, top-left: a roman numeral, the way the faction's grades are spoken of
+		var roman: Array = ["I", "II", "III", "IV", "V", "VI"]
+		var gtxt: String = String(roman[clampi(grade - 1, 0, 5)])
+		draw_string(nf, Vector2(7, 17), gtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.56, 0.57, 0.64))
+		# stock, top-right under the cut: a count for today's blocks, nothing for endless ones
+		if left > 0 and not locked:
+			var st: String = "×%d" % left
+			var sw: float = nf.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+			draw_string(nf, Vector2(w - sw - 7.0, CUT + 12.0), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
+				Color(0.9, 0.9, 0.93))
+		# the name, one line under the portrait
+		draw_string(font, Vector2(7, h - BAR - 6.0), title, HORIZONTAL_ALIGNMENT_LEFT, w - 14.0, 11,
+			Color(0.74, 0.75, 0.8))
+		# the price bar
+		var bar := Rect2(0, h - BAR, w, BAR)
+		var amber := Color(0.86, 0.58, 0.22)
+		draw_rect(bar, amber if sale > 0 and not locked else Color(0.065, 0.065, 0.08))
+		if locked:
+			var c := Vector2(14.0, h - BAR * 0.5)
+			var lc := Color(0.56, 0.57, 0.64)
+			draw_rect(Rect2(c.x - 6, c.y - 1, 12, 8), lc)
+			draw_polyline(PackedVector2Array([c + Vector2(-4, -1), c + Vector2(-4, -5), c + Vector2(-2, -7),
+				c + Vector2(2, -7), c + Vector2(4, -5), c + Vector2(4, -1)]), lc, 2.0)
+			draw_string(font, Vector2(26, h - 10.0), tr("Grade %d") % grade, HORIZONTAL_ALIGNMENT_LEFT,
+				w - 30.0, 12, lc)
+		else:
+			var ink := Color(0.08, 0.06, 0.03) if sale > 0 else (Color(0.95, 0.5, 0.45) if poor else Color(0.9, 0.9, 0.93))
+			var ptxt := str(price)
+			var pw: float = nf.get_string_size(ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			draw_string(nf, Vector2(w - pw - 8.0, h - 9.0), ptxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, ink)
+			_coin(Vector2(w - pw - 18.0, h - BAR * 0.5))
+			if sale > 0:
+				draw_string(nf, Vector2(7, h - 10.0), "−%d%%" % sale, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, ink)
+		if selected:
+			var sc := amber
+			draw_polyline(PackedVector2Array([Vector2(1, 1), Vector2(w - CUT - 0.5, 1), Vector2(w - 1, CUT + 0.5),
+				Vector2(w - 1, h - 1), Vector2(1, h - 1), Vector2(1, 1)]), sc, 2.0)
+	func _coin(c: Vector2) -> void:
+		var pts := PackedVector2Array()
+		for i in 8:
+			var a: float = TAU * (i + 0.5) / 8.0
+			pts.append(c + Vector2(cos(a), sin(a)) * 6.0)
+		draw_colored_polygon(pts, Color(0.83, 0.62, 0.24) if sale <= 0 else Color(0.25, 0.16, 0.05))
+		draw_rect(Rect2(c.x - 1.0, c.y - 2.5, 2.0, 5.0), Color(0.45, 0.3, 0.1) if sale <= 0 else Color(0.86, 0.58, 0.22))

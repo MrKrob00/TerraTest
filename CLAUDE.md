@@ -2799,6 +2799,14 @@ project: read it before claiming how anything works.
   pooled slots in the order the shop's sections left them. A row the money does not cover shows its
   price red and dims (a disabled Button dims its box, not the labels in it). Checked on the real
   driver in English and Russian, the last minute included.
+  **THE SHOP IS A GRID OF TILES WITH A DETAIL PANEL** (`tech_ui._build_shop_v2`, `SvTile`, `SvTab`,
+  the player's call after the list read as AI-made and bought blind): categories along the top as
+  drawn pictograms, the restock clock compact on the right of that strip, 128x160 tiles drawn whole
+  (portrait 104 px, roman grade top-left, `×N` stock top-right, price bar under it, amber bar for a
+  sale, padlock + grade when locked). A tap SELECTS; buying is in the right panel, whose machine
+  stats step aside while the shop is open (`_shop_v2_show`): portrait, faction and grade, text,
+  `_codex_stats`, crafting comparison from `G.block_recipe` x `G.base_price`, a quantity stepper
+  bounded by stock and money, and BUY, which calls `_buy` once per unit. One accent: amber.
   **THE SHOP WEARS THE BLOCKS' LOOK** (`tech_ui._plate` / `_row_style`, docs/ART_STYLE.md): dark
   violet-grey metal plates with cut corners (`corner_detail = 1`), no rounded pills, glow or
   shadows; a row's left stripe is its block's FACTION (`FACTION_COL`), the portrait sits in a dark
