@@ -122,7 +122,7 @@ global uniform vec4 haze_range;
 global uniform vec4 sun_dir;
 global uniform vec4 ground_amb;
 global uniform vec4 ground_sun;
-varying vec3 v_sun;
+varying mediump vec3 v_sun;
 // THE SUN'S SHADOW CASCADES (sun_shadows.gd): top-down windows of casters projected along the light,
 // near to far at 25 cm, 67 cm and 2 m a texel. Each window: uv = world.xz * x + yz, w = its half in
 // metres, 0 while that map is not built. ONE FETCH A PIXEL: which window a pixel reads is decided per
@@ -147,24 +147,27 @@ const float SH_BAND = 8.0;
 const float SH_DITHER = 6.0;
 const float SH_FADE = 1.0 / 6.0;
 #endif
-varying float v_haze;
+varying mediump float v_haze;
 // THE DETAIL IS DRAWN ONLY OUT TO DETAIL_FAR, faded over DETAIL_FADE before it (it ran to the solid
 // haze; 80 m first, doubled at the player's call once the ground was painted), on the ground's own plane everywhere (canyon walls streak; three planes were a pick a
 // pixel), and there is no per-pixel colour hash - the player's cuts after the phone's probe put the
 // detail block at ~7 ms, tried as switches and kept on.
 const float DETAIL_FAR = 160.0;
 const float DETAIL_FADE = 40.0;
-varying float v_det;
+varying mediump float v_det;
 
-varying vec3  v_base_col;
+// MEDIUMP WHERE IT IS A COLOUR (the phone's GPU, Adreno 610, runs half floats at twice the rate and
+// stores half the varying memory per vertex in its binning pass): a colour ends 8-bit, and fp16 is
+// 11 bits of mantissa, so the picture cannot tell. World positions (v_wpos) and the shadow windows'
+// metres (v_shsel) stay highp - the detail's uv and the windows' signs need them.
+varying mediump vec3  v_base_col;
 // THE DETAIL'S STRENGTHS, every one worked out per vertex with DETAIL_FAR's fade folded in, so the
 // fragment only multiplies: the dab tints (dark, light), the ripples a channel (bare sand, snow),
 // the cracks as 1 + x + y * R (the salt flat, the rock's facets), the patches.
-varying vec3  v_pd;
-varying vec3  v_pl;
-varying vec3  v_rip;
-varying vec2  v_crack;
-varying float v_patch;
+varying mediump vec3  v_pd;
+varying mediump vec3  v_pl;
+varying mediump vec3  v_rip;
+varying mediump vec2  v_crack;
 varying vec2  v_wpos;         // world x, z - the detail fetch and the shadow lookup
 
 float hash2D(vec2 p) {
@@ -223,7 +226,7 @@ void vertex() {
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
-    v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
+    v_haze = smoothstep(haze_range.x, haze_range.y, ground_d) * haze_range.z;   // the strength folded in: linear, so exact
     v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
 #ifdef FAST_GROUND
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
@@ -254,14 +257,19 @@ void vertex() {
     // and a shade of its own. One terracotta a little lighter or darker read as one red mass.
     // hash2D is NOT used here: on whole numbers it clusters (a quarter of the bands came out over
     // 0.9), and the rare pale band painted whole canyon floors sand-coloured.
-    float band_id    = floor(wy / canyon_band_h);
-    float bh         = fract(sin(band_id * 91.7 + 7.3) * 43758.5453);   // 0..1 per band, stable
-    vec3  cc         = color_canyon.rgb;
-    vec3  canyon_col = bh < 0.40 ? cc * vec3(1.10, 1.12, 1.00)
-                     : bh < 0.72 ? cc * vec3(0.86, 0.80, 0.86)
-                     : bh < 0.90 ? cc * vec3(0.74, 0.86, 1.36)
-                     :             cc * vec3(1.12, 1.42, 1.55);
-    canyon_col      *= 0.90 + 0.18 * fract(sin(band_id * 47.3 + 2.1) * 43758.5453);
+    // Only a canyon vertex pays for its band (two sin and the palette): everywhere else canyon_col is
+    // weighted by canyon (or cliff_c, canyon times something) = 0, so the result is the same.
+    vec3  canyon_col = color_canyon.rgb;
+    if (canyon > 0.0) {
+        float band_id    = floor(wy / canyon_band_h);
+        float bh         = fract(sin(band_id * 91.7 + 7.3) * 43758.5453);   // 0..1 per band, stable
+        vec3  cc         = color_canyon.rgb;
+        canyon_col = bh < 0.40 ? cc * vec3(1.10, 1.12, 1.00)
+                   : bh < 0.72 ? cc * vec3(0.86, 0.80, 0.86)
+                   : bh < 0.90 ? cc * vec3(0.74, 0.86, 1.36)
+                   :             cc * vec3(1.12, 1.42, 1.55);
+        canyon_col      *= 0.90 + 0.18 * fract(sin(band_id * 47.3 + 2.1) * 43758.5453);
+    }
     // Colour channels are 8-bit: the code is read with a margin, the salt is what is left over.
     float edge    = floor(COLOR.r * 3.0 + 0.05);
     float salt    = clamp((COLOR.r - edge / 3.0) / SALT_SPAN, 0.0, 1.0);
@@ -316,7 +324,6 @@ void vertex() {
     float salt_w = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
     float rock_w = rock_t * mix(1.0, 0.5, cliff_c) * rock_facets;
     v_crack = (salt_w * vec2(0.35 - 1.0, 1.08 - 0.35) + rock_w * vec2(0.62 - 1.0, 1.08 - 0.62)) * v_det;
-    v_patch = 2.0 * patch_strength * v_det;
     // THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL, so two nodes meeting on a seam
     // lift their shared vertices alike whatever their levels and whenever each was built. It used to
     // be the near level only, with the border rows flagged flat where the neighbour was coarser -
@@ -352,13 +359,14 @@ void vertex() {
 }
 
 void fragment() {
-    vec3 base_col = v_base_col;
+    mediump vec3 base_col = v_base_col;
 
     // The detail masks, one fetch on the ground's plane (DETAIL_FAR above); every strength comes
     // from the vertex with the fade in it.
     if (v_det > 0.0) {
-        vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
-        float k = (1.0 + (dt.a - 0.5) * v_patch) * (1.0 + v_crack.x + v_crack.y * dt.r);
+        mediump vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
+        // the patches' strength is the uniform times v_det - a varying of it was one more slot a vertex
+        mediump float k = (1.0 + (dt.a - 0.5) * (2.0 * patch_strength * v_det)) * (1.0 + v_crack.x + v_crack.y * dt.r);
         // each dab shifts the hue: dark ones toward the biome's cool shade, light ones its warm light
         base_col = clamp(base_col * k * (vec3(1.0) + v_rip * (dt.g - 0.53)) * mix(v_pd, v_pl, dt.b), 0.0, 1.0);
     }
@@ -383,5 +391,5 @@ void fragment() {
     ROUGHNESS = 0.9;
 
     // the haze last, over everything: the air between the camera and the surface
-    FOG = vec4(world_haze.rgb, v_haze * haze_range.z);
+    FOG = vec4(world_haze.rgb, v_haze);
 }
