@@ -20,6 +20,7 @@ render_mode diffuse_lambert, specular_disabled;
 // #define PROBE_NO_LIFT        // the grass/snow lift: hashes and the trample fetch in the VERTEX stage
 // #define PROBE_NO_TONE        // the slow tone noise (vnoise, 4 hashes a vertex)
 // #define PROBE_NO_HAZE        // the haze written to FOG
+// #define PROBE_NO_SHADOW      // the fast ground's one shadow fetch and its branches (FAST_GROUND only)
 // #define PROBE_FLAT_VERTEX    // the whole vertex colour block: v_* constant, only position + haze
 group_uniforms Texture;
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
@@ -398,8 +399,10 @@ void fragment() {
 #ifndef PROBE_NO_DETAIL
     // The detail masks, one fetch on the ground's plane (DETAIL_FAR above); every strength comes
     // from the vertex with the fade in it.
-    if (v_det > 0.0) {
-        mediump vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
+    // past a fade of 1/255 the detail cannot change a byte of the colour: no fetch there (the 40 m band
+    // before DETAIL_FAR), and the divide by a uniform is a multiply the driver can hoist
+    if (v_det > 0.004) {
+        mediump vec4 dt = texture(ground_detail, v_wpos * (1.0 / detail_world_size));
         // the patches' strength is the uniform times v_det - a varying of it was one more slot a vertex
         mediump float k = (1.0 + (dt.a - 0.5) * (2.0 * patch_strength * v_det)) * (1.0 + v_crack.x + v_crack.y * dt.r);
         // each dab shifts the hue: dark ones toward the biome's cool shade, light ones its warm light
@@ -410,10 +413,11 @@ void fragment() {
 
     ALBEDO    = base_col;
 #ifdef FAST_GROUND
-    float shade = 0.0;
+    mediump float shade = 0.0;
+#ifndef PROBE_NO_SHADOW
     if (sun_shadow_strength > 0.0 && v_shsel.w > 0.0) {
         vec2 sp = v_wpos;
-        float s = 0.0;
+        mediump float s = 0.0;
         if (v_shsel.x < 0.0) {
             s = textureLod(sun_shadow_map, sp * sun_shadow_uv0.x + sun_shadow_uv0.yz, 0.0).r;
         } else if (v_shsel.y < 0.0) {
@@ -423,7 +427,8 @@ void fragment() {
         }
         shade = s * v_shsel.w * sun_shadow_strength;
     }
-    ALBEDO   *= ground_amb.rgb + ground_sun.rgb * (v_sun * (1.0 - shade));
+#endif
+    ALBEDO   *= ground_amb.rgb + ground_sun.rgb * (v_sun * (1.0 - shade));   // mediump: a colour
 #endif
     ROUGHNESS = 0.9;
 
