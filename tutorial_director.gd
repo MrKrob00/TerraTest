@@ -10,7 +10,7 @@ extends Node
 const GUIDE := preload("res://tutorial_guide.gd")
 
 # Стартовая машина — ОДНА кабина, вокруг падает базовый набор (world_persist._fresh_start).
-const STARTER_BLOCKS: int = 8    # столько блоков надо навесить в шаге tut_place_all
+const STARTER_BLOCKS: int = 7    # G.FIRST_KIT: how many blocks tut_place_all asks for (the gun comes later)
 const CABIN_BLOCKS: int = 1      # что уже стоит на машине к началу обучения
 
 var _guide: TutorialGuide = null
@@ -74,6 +74,7 @@ func _on_quests_changed() -> void:
 	var closed := _step
 	_step = id
 	_aimed = ""
+	_route_prev = ""
 	if closed != "" and EXPLAIN.has(closed):
 		_explain = (EXPLAIN[closed] as Array).duplicate()
 		_show_explain()
@@ -99,6 +100,8 @@ func _process(delta: float) -> void:
 	# ветка выходила раньше счётчика, и всё, что игрок навесил за время реплик, не считалось.
 	if _step == "tut_place_all":
 		_drive_assembly_progress()
+	elif ARSENAL.has(_step):
+		_drive_arsenal()
 	if not _explain.is_empty():
 		_explain_tick(delta)
 		return
@@ -213,8 +216,8 @@ func _pending_blocks() -> int:
 # колёс. Поэтому обучение показывает ЧЕРТЁЖ: белый призрак блока стоит в той клетке, куда он
 # и должен встать (build_hint.gd), а палец ведёт к ближайшей незакрытой.
 #
-# Раскладка — ровно стартовый набор (G.STARTER_KIT: два блока, четыре малых колеса, малый бур
-# и пушка) вокруг кабины, которая уже стоит в центре сетки. Ни одного лишнего блока: чертёж,
+# Раскладка — ровно стартовый набор (G.FIRST_KIT: два блока, четыре малых колеса, малый бур)
+# вокруг кабины, которая уже стоит в центре сетки. Ни одного лишнего блока: чертёж,
 # в котором чего-то не хватает, читается как ошибка игрока, а не как подсказка.
 #
 # Повороты колёс не на глаз: у колеса connect_faces = 2 (стыкуется задом, +Z), и к корпусу
@@ -234,8 +237,9 @@ const BLUEPRINT := [
 	{"cell": Vector3i(4, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
 	{"cell": Vector3i(6, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
 	{"cell": Vector3i(5, 5, 3), "block": G.Block.SMALL_DRILL, "yaw": 0.0},   # бур НА переднем блоке
-	{"cell": Vector3i(5, 6, 5), "block": G.Block.GUN,         "yaw": 0.0},   # ствол на кабине
 ]
+## The gun's place, outlined only in the step that bolts it on (the kit has no gun, see ARSENAL).
+const GUN_CELL := Vector3i(5, 6, 5)
 
 var _hints: Array = []
 
@@ -376,6 +380,8 @@ func _aim_current_step() -> void:
 			else:
 				_aim_world(_nearest_loose_block, "Take the next part",
 						TutorialGuide.Gate.WORLD)
+		"tut_tree", "tut_research_gun", "tut_inventory", "tut_take_gun", "tut_place_gun":
+			_aim_arsenal()
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your directive tracker. Tap it")
 		"tut_garage":
@@ -392,7 +398,7 @@ func _aim_current_step() -> void:
 # ── Наведение ────────────────────────────────────────────────────────────────
 # Цели-кнопки появляются не сразу (гараж инстансится при первом открытии), поэтому
 # отсутствие цели — не ошибка: просто ждём следующего кадра.
-func _aim_node(node: CanvasItem, text: String) -> void:
+func _aim_node(node: CanvasItem, text: String, double_tap: bool = false) -> void:
 	if node == null or not is_instance_valid(node) or not node.is_visible_in_tree():
 		# ЧУЖОЙ ПУЗЫРЬ ГАСИМ ВСЕГДА, а не только если наводились сами. Смена шага сбрасывает
 		# _aimed в пустую строку, и по старому условию подсказка ПРОШЛОГО шага оставалась
@@ -407,7 +413,7 @@ func _aim_node(node: CanvasItem, text: String) -> void:
 		return
 	_aimed = key
 	_set_ui_locked(false)
-	_guide.point_at_node(node, text)
+	_guide.point_at_node(node, text, double_tap)
 
 func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.TARGET) -> void:
 	var key := "%s|%s|%s" % [_step, getter.get_method(), text]
@@ -500,12 +506,133 @@ func _nearest_loose_block() -> Vector3:
 		return best_w                     # the part the plan can take now
 	return best if best_d < INF else origin
 
+# ── ARSENAL: the gun through the tree and the inventory ──────────────────────
+# THE KIT HAS NO GUN (the player's call, G.FIRST_KIT): once the machine is built the tutorial walks
+# to the TREE, researches the Machine Gun (grade 1, 0 RP - research hands one into the inventory),
+# opens the INVENTORY, takes the gun and bolts it onto the cabin. Every step is closed HERE by what
+# the game shows (`_drive_arsenal`), never by an event: a player who gets ahead - the gun already in
+# hand, already on the machine - is let through at once. AND A PLAYER WHO STRAYS IS BROUGHT BACK: the
+# finger always points at what leads back (the backpack while the garage is closed, the right tab
+# while another is open), and the Mechanic says so once when it happens (`_stray`).
+const ARSENAL := ["tut_tree", "tut_research_gun", "tut_inventory", "tut_take_gun", "tut_place_gun"]
+const TAB_INVENTORY := 0          # tech_ui's enum
+const TAB_TECH := 5
+const STRAY_GAP := 6.0            # s between two "you strayed" lines
+var _route_prev: String = ""
+var _stray_t: float = -1e9
+var _gun_hint: Node = null
+
+func _garage_tab() -> int:
+	var g: Node = _hud_ui("garage")
+	if g == null or not (g as Control).visible:
+		return -1
+	return int(g.get("_tab"))
+
+func _gun_on_machine() -> bool:
+	var v: Node = _vehicle()
+	if v == null or v.get("block_map_node") == null:
+		return false
+	for b in v.block_map_node.get_children():
+		if b.get("block") != null and int(b.get("block")) == int(G.Block.GUN):
+			return true
+	return false
+
+func _drive_arsenal() -> void:
+	var gun: int = int(G.Block.GUN)
+	var tab: int = _garage_tab()
+	var on: bool = _gun_on_machine()
+	var held: bool = _held_block() == gun
+	match _step:
+		"tut_tree":
+			if tab == TAB_TECH or G.researched.has(gun):
+				Q.set_progress(_step, 1)
+		"tut_research_gun":
+			if G.researched.has(gun):
+				Q.set_progress(_step, 1)
+		"tut_inventory":
+			if tab == TAB_INVENTORY or held or on:
+				Q.set_progress(_step, 1)
+		"tut_take_gun":
+			if held or on:
+				Q.set_progress(_step, 1)
+			elif G.block_available(gun) <= 0:
+				# The researched gun went somewhere the plan cannot follow: hand another over rather
+				# than leave the tutorial without a way on.
+				G.block_inventory.append(gun)
+		"tut_place_gun":
+			if on:
+				_clear_gun_hint()
+				Q.set_progress(_step, 1)
+
+## Where the step wants the player and the finger that leads there.
+func _aim_arsenal() -> void:
+	var gun: int = int(G.Block.GUN)
+	var tab: int = _garage_tab()
+	var route: String = "ok"
+	if _step == "tut_place_gun" and _held_block() == gun:
+		_show_gun_hint()
+		_aim_world(_gun_point, "Double-tap the cabin's roof to attach it", TutorialGuide.Gate.WORLD)
+		_route_prev = "ok"
+		return
+	if tab < 0:
+		route = "closed"
+		_aim_node(_hud_ui("menu"), "Open the garage")
+	else:
+		var want_tab: int = TAB_TECH if _step in ["tut_tree", "tut_research_gun"] else TAB_INVENTORY
+		if tab != want_tab:
+			route = "tab"
+			_aim_node(_garage_node("tab_tech" if want_tab == TAB_TECH else "tab_inventory"),
+					"Open the TREE" if want_tab == TAB_TECH else "Open the INVENTORY")
+		elif _step == "tut_research_gun":
+			# THE NODE ITSELF, DOUBLE-TAPPED (tech_ui._make_tech_node researches on a quick second
+			# tap): the Research button sits at the scroll's bottom, under the dialogue strip.
+			_aim_node(_garage_node("tech_gun"), "Double-tap the Machine Gun — it costs 0 RP", true)
+		else:
+			var slot: Control = _garage_node("inv_gun")
+			if slot != null:
+				_aim_node(slot, "Tap the gun to take it")
+			else:
+				_aim_node(_garage_node("filters"), "Show all parts")
+	_stray(route)
+	_route_prev = route
+
+func _stray(route: String) -> void:
+	if route == _route_prev or route == "ok" or _route_prev == "":
+		return
+	if route == "tab" and _route_prev != "ok":
+		return                        # the step began on another tab: that is the way, not a stray
+	var now: float = Time.get_ticks_msec() / 1000.0
+	if now - _stray_t < STRAY_GAP:
+		return
+	_stray_t = now
+	Dialogue.say("Mechanic", tr("The garage closed. The backpack in the corner opens it again.") if route == "closed"
+			else tr("That is another tab — follow the finger back."))
+
+func _show_gun_hint() -> void:
+	if is_instance_valid(_gun_hint):
+		return
+	var v: Node = _vehicle()
+	if v == null or v.get("block_map_node") == null:
+		return
+	_gun_hint = BuildHint.create(v.block_map_node, GUN_CELL, int(G.Block.GUN), Vector3.ZERO)
+
+func _clear_gun_hint() -> void:
+	if is_instance_valid(_gun_hint):
+		_gun_hint.queue_free()
+	_gun_hint = null
+
+func _gun_point() -> Vector3:
+	if is_instance_valid(_gun_hint):
+		return (_gun_hint as BuildHint).tap_point(_aim_origin())
+	return _vehicle_point()
+
 # ── Конец обучения → первый сюжетный бой ─────────────────────────────────────
 func _on_tutorial_finished() -> void:
 	if _story_started:
 		return
 	_story_started = true
 	_explain.clear()                      # пропуск в середине пояснения не должен держать заглушку
+	_clear_gun_hint()
 	_guide.clear()
 	_set_ui_locked(false)
 	_step = ""

@@ -770,7 +770,8 @@ project: read it before claiming how anything works.
 - DAMAGE IS SHOWN AS CELLS, NOT AS A LEVEL (`block_hp.gdshader`): a cell is broken or not, decided
   by its own hash against the damage share, so a new hit ADDS glyphs to the ones already lit and
   never reshuffles them; only the symbol flips 0↔1. A repair greens the cells that stopped being
-  broken and they fade over `HEAL_FADE` — there is no separate heal effect, it would draw the same
+  broken and they fade over `HEAL_FADE`, and every repair tick flashes the still-lit ones green too,
+  fading back to red (a tick mends a few HP, so its band of freed cells often held none) — there is no separate heal effect, it would draw the same
   thing twice and say nothing about WHAT was repaired.
 - THE DAMAGE SHELL WRAPS THE BLOCK'S MIDDLE, NOT ITS ANCHOR (`BlockFX._local_aabb`): its safety cap
   (`MAX_EXTENT`, against an effect mesh stretching the box) was a 2 m cube round the anchor, and a
@@ -2090,8 +2091,16 @@ project: read it before claiming how anything works.
   energy branch is one: an anchored support 50 m out with the panel beside it, then the repair unit.
   Such a base carries meta `quest_id` and that tag is saved with the machine (`world_persist`), or
   every load would stand a second base next to the first — the arc's own state is memory only.
-- THE TUTORIAL IS BUILDING THE MACHINE AND NOTHING ELSE (four steps: BUILD, take a part, attach it,
-  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone). THE
+- THE TUTORIAL IS BUILDING THE MACHINE AND ARMING IT (four steps: BUILD, take a part, attach it,
+  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone). THEN THE
+  ARSENAL (the player's call): A NEW GAME'S KIT HAS NO GUN (`G.FIRST_KIT`; a respawn's `starter_kit`
+  keeps it - after a death in a fight there must be something to answer with), so five more steps go
+  to the TREE, research the Machine Gun (grade 1, 0 RP; research hands one into the inventory), open
+  the INVENTORY, take the gun and bolt it onto the cabin's roof (`tutorial_director.ARSENAL`,
+  `GUN_CELL` outlined only then). Each closes from what the game shows (`_drive_arsenal`), so a player
+  ahead of it is let through; one who strays is pointed back (`_aim_arsenal`: the backpack while the
+  garage is closed, the right tab while another is open, a Mechanic line once, `STRAY_GAP`). A save that
+  finished the old tutorial counts the five as done (`Q._settle_arsenal`). THE
   GAME TAKES THE BUILD STEP ITSELF (the player's call: the tutorial opens in assembly): once the
   machine stands in the world - the planetfall intro over (group `planetfall_intro`), `intro_hidden`
   gone, `G.world_ready` - `tutorial_director` calls the machine's own `_on_building_pressed`, the door
@@ -2363,13 +2372,39 @@ project: read it before claiming how anything works.
 - Death hands the camera to the nearest own machine WITH A CABIN, and spawns a starter one (kit
   included) when there is none: `vehicles` also holds stations, and handing over to one of those
   read as "I respawned on my base" — no cabin, nothing to drive.
-- **SURRENDER IS THE CABIN'S OWN DEATH** (`vehicle_body_3d.surrender`, the garage's settings under
-  MACHINE, behind a question - nothing irreversible is one tap among sliders): the cabin goes through
+- **SURRENDER IS THE CABIN'S OWN DEATH** (`vehicle_body_3d.surrender`, through `game_menu.surrender` -
+  the in-game menu and the stuck offer, both asking twice): the cabin goes through
   `VehicleBlock.destroy`, the door a cabin dies by, so its blast, the scatter, the death screen and the
   new cabin are the ordinary ones. Not through `hurt`: the debug invulnerability sits there. The
   death screen names nobody (`_last_attacker` cleared). A machine with no cabin (a base) refuses.
   Measured on the proving ground through the real button: question, garage closed, machine freed,
   death screen with no killer, a new cabin after the pause.
+- **THE IN-GAME MENU IS ONE BUTTON AND THE BACK KEY** (`game_menu.gd`, `hud._pause_btn` left of the map,
+  movable as "pause" in the layout; the player: "Surrender and Main menu have to be searched for"):
+  CONTINUE, SETTINGS (the garage's tab), Main menu (saves, `G.leave_proving_ground`, the menu scene -
+  `game_menu.to_main_menu`, the one door) and Surrender, which asks twice INSIDE the card
+  (`CONFIRM_TIME`). They sat at the bottom of the garage's SETTINGS -> GAME, four taps in. THE PHONE'S
+  BACK KEY OPENS IT (`hud._back`: the garage closes first, then the menu): `quit_on_go_back` is off
+  while the HUD lives, and back quit the app on the spot. Esc does the same on a PC except in assembly,
+  where it is the "Movement" key. The world does not pause - nothing in the game does, and a paused
+  tree stops the terrain's queues, the music and the save timer.
+- **"YOU CANNOT GO ON" IS A CARD THAT OFFERS THE FIX FIRST** (`stuck_watch.gd`, a CanvasLayer under the
+  HUD; the player: offer to surrender when there is no way to continue, "not at every sneeze"). Twice
+  a second it reads the driven machine: OVERTURNED (up . UP under `FLIP_DOT` for `FLIP_TIME`, at rest)
+  offers "Put it on its wheels"; STUCK (the stick held `PUSH_SHARE` of a 10 s window, under
+  `STUCK_PATH` driven and `STUCK_NET` made good) offers "Lift it out" - both `vehicle_body_3d.right_up`,
+  heading kept, the lowest block `LIFT_CLEAR` over the highest ground under the footprint, a drop
+  under `LAND_WAVE_DROP`. With no wheels, overloaded, or stuck again within `RELIFT` of a lift: assembly
+  when a wheel is at hand (`G.block_available`) or the build is heavy, the shop when a wheel is for
+  sale and affordable, and only then Surrender (naming the other machine it hands over to, or the new
+  cabin and kit). NEVER: in the tutorial or the intro, in assembly, the garage, the menu, the layout
+  editor or the death screen, anchored, on a base, within `COMBAT_QUIET` of the machine losing hit
+  points, or `GRACE` after a world start, switch or respawn. ONCE PER EPISODE (it ends `EPISODE_LEAVE`
+  from where it began, or upright again), `OFFER_GAP` between any two cards, "Not now" snoozes that
+  kind `SNOOZE` doubling to `SNOOZE_MAX`; the card leaves by itself once the machine moves off. The
+  player had no way back on its wheels at all: `_apply_upright` is ~40x too weak to roll a machine
+  over (arithmetic, and nothing at exactly upside down), the enemy has `_flip_recover`, and the build
+  mode hover that rights a machine was a trick nobody knew.
 - `world_persist.gd` saves machines, loose blocks and a 10-minute TTL. A base is a machine with the
   `station` flag; `machines[0]` is the one the player controls; restoring runs across frames, so
   `is_instance_valid` after every `await`.
@@ -2554,8 +2589,8 @@ project: read it before claiming how anything works.
   could not reproduce the turn (the garage's panel takes the press there), so the phone confirms it.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - **THE PLAYER MOVES THE CONTROLS** (`hud` "THE PLAYER'S OWN LAYOUT", `LayoutEditor`; garage -> SETTINGS
-  -> INTERFACE -> "Move controls"; the player's call): ATTACK, BUILD, the inventory, the anchor, the
-  map and the money. The garage closes and a dashed frame lies over each; a drag moves it, DONE keeps
+  -> INTERFACE -> "Move controls"; the player's call): ATTACK, BUILD, the inventory, the menu, the
+  anchor, the map and the money. The garage closes and a dashed frame lies over each; a drag moves it, DONE keeps
   it, RESET puts all back. What is kept is the control's MIDDLE as a SHARE OF THE SCREEN (`G.ui_windows`
   `hud_<id>`, beside the floating windows' places), so a layout survives another screen; it is clamped
   inside the screen as it is placed. ONE DOOR, `hud._placed(id, size, default, screen)`: every spot

@@ -30,6 +30,7 @@ func _ready() -> void:
 			if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
 				q["done"] = true
 				q["progress"] = q["goal"]
+		_settle_arsenal(g)
 		changed.emit()
 		# Реплика Механика при новом грейде лицензии (см. G.grade_up / этап 1 прогрессии).
 		g.grade_up.connect(_on_grade_up)
@@ -72,8 +73,21 @@ func _seed_demo() -> void:
 			"Now double-tap yourself where it should attach. Any face will take it.")
 	# Событие пустое: прогресс СТАВИТ наставник по числу блоков на машине. По событию
 	# block_placed его накручивали бы циклом «поставил — снял — поставил».
-	add_quest("tut_place_all", "Boot: Assembly", "Attach every part", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
+	add_quest("tut_place_all", "Boot: Assembly", "Attach every part", Type.TUTORIAL, 7, 3, "", 0, 0, 0, 1,
 			"Same for the rest. Wheels to the sides, drill facing out — you decide what you are.")
+	# THE ARSENAL: the kit has no gun (G.FIRST_KIT, the player's call), so the tutorial goes on into
+	# the TREE, researches the Machine Gun (0 RP, research hands one over), opens the INVENTORY and
+	# bolts the gun on. Closed by tutorial_director._drive_arsenal from what the game shows, so the
+	# events are empty; a player who strays is pointed back (_aim_arsenal).
+	add_quest("tut_tree", "Boot: Arsenal", "Open the TREE", Type.TUTORIAL, 1, 4, "", 0, 0, 0, 1,
+			"No gun on you yet. Guns are unlocked in the tech tree: open TREE in the garage.")
+	add_quest("tut_research_gun", "Boot: Arsenal", "Research the Machine Gun", Type.TUTORIAL, 1, 5, "", 0, 0, 0, 1,
+			"The Machine Gun costs nothing to research. Research hands you one at once.")
+	add_quest("tut_inventory", "Boot: Arsenal", "Open the INVENTORY", Type.TUTORIAL, 1, 6, "", 0, 0, 0, 1,
+			"It is in your inventory now.")
+	add_quest("tut_take_gun", "Boot: Arsenal", "Take the gun", Type.TUTORIAL, 1, 7, "", 0, 0, 0, 1)
+	add_quest("tut_place_gun", "Boot: Arsenal", "Attach the gun", Type.TUTORIAL, 1, 8, "", 0, 0, 0, 1,
+			"Put it on the cabin's roof: up there it sees all round.")
 	# THE TUTORIAL IS ASSEMBLY ONLY, AND IT ENDS WHEN THE MACHINE IS BUILT (the player's call: a "Leave
 	# assembly / Drive" step came after it and is gone; the scout is the first STORY quest). Journal, storage, shop, tree and sound steps were six taps on
 	# buttons already in plain sight; what cannot be guessed is that blocks join by FACES, each with
@@ -572,6 +586,23 @@ func report(event: String, amount: int = 1) -> void:
 ## стартовые блоки в мир уже не выдадутся), это единственный выход.
 ## Идёт ли ещё обучение. Спавнер врагов держит мир пустым, пока игрок учится: разбираться
 ## с рейдером в середине вводной незачем, а первого врага сюжет приводит сам.
+## A SAVE THAT FINISHED THE TUTORIAL BEFORE THE ARSENAL STEPS EXISTED does not reopen it: the five
+## arsenal steps count as done once the old last step is (tutorial_active() would otherwise hold the
+## spawner and the story for a player who has played for hours).
+const TUT_ARSENAL := ["tut_tree", "tut_research_gun", "tut_inventory", "tut_take_gun", "tut_place_gun"]
+
+func _settle_arsenal(g: Node) -> void:
+	if not g.quests_done.has("tut_place_all"):
+		return
+	for id in TUT_ARSENAL:
+		var q := _find(id)
+		if q.is_empty() or q["done"]:
+			continue
+		q["done"] = true
+		q["progress"] = q["goal"]
+		if not g.quests_done.has(id):
+			g.quests_done.append(id)
+
 func tutorial_active() -> bool:
 	return not _current_tutorial().is_empty()
 
@@ -629,6 +660,8 @@ func reload_from_progress() -> void:
 		if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
 			q["done"] = true
 			q["progress"] = q["goal"]
+	if g != null:
+		_settle_arsenal(g)
 	tracked_id = ""
 	changed.emit()
 	_auto_track()

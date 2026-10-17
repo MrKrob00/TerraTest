@@ -129,6 +129,29 @@ func surrender() -> bool:
 func can_surrender() -> bool:
 	return _own_cabin() != null
 
+## BACK ON ITS WHEELS (the stuck offer's fix, stuck_watch.gd): the heading kept, the tilt dropped, the
+## lowest block `clear` metres over the highest ground under the footprint. Build mode's hover did the
+## same for a player who knew to press BUILD and close the garage. Low on purpose: a drop under
+## `LAND_WAVE_DROP` costs the wheels nothing. Rule 7: the enemy rights itself (`_flip_recover`).
+func right_up(clear: float) -> void:
+	if anchored or is_station or _dying or block_map_node == null:
+		return
+	var fwd: Vector3 = -global_basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.01:             # nose straight up or down: the roof points the way
+		fwd = global_basis.y
+		fwd.y = 0.0
+	if fwd.length_squared() < 0.01:
+		fwd = Vector3.FORWARD
+	global_basis = Basis.looking_at(fwd.normalized(), Vector3.UP)
+	var low: float = 0.0
+	for b in block_map_node.get_children():
+		if b is VehicleBlock and not (b as Node3D).top_level:
+			low = minf(low, (b as Node3D).position.y - 0.5)
+	global_position.y = ground_under_machine() - low + clear
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+
 func _own_cabin() -> VehicleBlock:
 	if _dying or block_map_node == null:
 		return null
@@ -1149,7 +1172,7 @@ func _on_building_pressed() -> void:
 # «интерфейсом», подобрать блок или ресурс в этой половине было нельзя вовсе — тап молча
 # проглатывался. Езде это не мешает: джойстик работает ПЕРЕТАСКИВАНИЕМ, а подбор — коротким
 # двойным тапом, и одно от другого отличает _build_tap_moved.
-const _UI_HIT_NODES := ["Take", "TakeOff", "Attack", "ModeToggle"]
+const _UI_HIT_NODES := ["Take", "TakeOff", "Attack", "ModeToggle", "PauseButton"]
 const _UI_HIT_PANELS := ["_rotate_panel", "_hand_panel", "_block_globe"]
 
 # Пришёлся ли указатель на интерактивный HUD? На ПК hover-контрол ловит это сам. На ТАЧЕ

@@ -20,6 +20,9 @@ const FPS_EVERY := 0.25               # s between text updates: setting text res
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
 const MENU_PAD: float = 12.0                # отступ от углов экрана
 var _menu_btn: Button
+var _pause_btn: Button = null               # the in-game menu (game_menu.gd), top right
+var _game_menu: CanvasLayer = null
+var _stuck_watch: CanvasLayer = null        # stuck_watch.gd
 var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
 var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
@@ -49,6 +52,7 @@ var _game_controls: Array = []              # игровые кнопки/джо
 
 func _ready() -> void:
 	_build_menu_button()
+	_build_pause_button()
 	_build_rotate_panel()
 	_build_hand_panel()
 	_build_block_globe()
@@ -74,6 +78,15 @@ func _ready() -> void:
 	add_child(_licence_popup)
 	G.licence_granted.connect(_on_licence_granted)
 	G.grade_up.connect(_on_licence_level)
+	_game_menu = preload("res://game_menu.gd").new()
+	_game_menu.hud = self
+	add_child(_game_menu)
+	_stuck_watch = preload("res://stuck_watch.gd").new()
+	_stuck_watch.hud = self
+	add_child(_stuck_watch)
+	# THE PHONE'S BACK KEY OPENS THE MENU instead of quitting the app (`_notification`, which also
+	# puts the project's setting back when the HUD leaves the tree, for the menu scene).
+	get_tree().quit_on_go_back = false
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
 	# экрана — их надо пере-разложить, иначе при expand они «отлипнут» от краёв.
@@ -110,6 +123,7 @@ func _relayout() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	if _menu_btn:
 		_menu_btn.position = _placed("menu", _menu_btn.size, Vector2(MENU_PAD, MENU_PAD), screen)
+	_layout_pause()
 	if _drawer:
 		if _drawer_tween and _drawer_tween.is_valid():
 			_drawer_tween.kill()       # ресайз во время слайда — снапаем, не даём доиграть
@@ -1333,6 +1347,7 @@ func _update_radar(delta: float) -> void:
 		_radar.range_world = RADAR_RANGE_FULL if on else RADAR_RANGE_SMALL
 		_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
 		_layout_money()
+		_layout_pause()
 		_push_quest_top(true)      # карта и трекер квестов делят правый верхний угол
 	var live: bool = v != null and v is Node3D and not _controls_hidden
 	if _money_panel:
@@ -1401,9 +1416,9 @@ func _has_radar(v) -> bool:
 # ONE DOOR, `_placed`: every spot that puts one of these on screen asks it, with its own default -
 # a moved control has no second place that would put it back. The joystick is not in the list: it
 # jumps to wherever the thumb lands. The quest tracker drags itself (DragWindow).
-const LAYOUT_IDS := ["attack", "mode", "menu", "anchor", "radar", "money"]
-const LAYOUT_NAMES := {"attack": "Attack", "mode": "BUILD", "menu": "Inventory", "anchor": "Anchor",
-		"radar": "Map", "money": "Money"}
+const LAYOUT_IDS := ["attack", "mode", "menu", "pause", "anchor", "radar", "money"]
+const LAYOUT_NAMES := {"attack": "Attack", "mode": "BUILD", "menu": "Inventory", "pause": "Menu",
+		"anchor": "Anchor", "radar": "Map", "money": "Money"}
 const LAYOUT_PAD := 6.0
 
 func _layout_saved(id: String) -> Variant:
@@ -1429,6 +1444,8 @@ func layout_rect(id: String) -> Rect2:
 			return Rect2(m.position - ModeFace.SIZE * 0.5, ModeFace.SIZE) if m != null else Rect2()
 		"menu":
 			return Rect2(_menu_btn.position, _menu_btn.size) if _menu_btn != null else Rect2()
+		"pause":
+			return Rect2(_pause_btn.position, _pause_btn.size) if _pause_btn != null else Rect2()
 		"anchor":
 			return Rect2(_anchor_btn.position, _anchor_btn.size) if _anchor_btn != null else Rect2()
 		"radar":
@@ -1533,6 +1550,7 @@ class LayoutEditor extends Control:
 			"attack": return hud.get_node_or_null("Attack")
 			"mode": return hud.get_node_or_null("ModeToggle")
 			"menu": return hud._menu_btn
+			"pause": return hud._pause_btn
 			"anchor": return hud._anchor_btn
 			"radar": return hud._radar
 			"money": return hud._money_panel
@@ -1790,6 +1808,73 @@ func _build_menu_button() -> void:
 	# через полноэкранное меню.
 	_build_vehicle_drawer()
 
+# ── The in-game menu (game_menu.gd) ─────────────────────────────────────────────
+## A button in the row of the corner buttons, left of the map, in the backpack's own frame, and the
+## phone's Back key (`_notification`) - which quit the app before. Movable like the other controls.
+const PAUSE_BTN: float = 60.0
+
+func _build_pause_button() -> void:
+	_pause_btn = Button.new()
+	_pause_btn.name = "PauseButton"
+	_pause_btn.focus_mode = Control.FOCUS_NONE
+	_pause_btn.size = Vector2(PAUSE_BTN, PAUSE_BTN)
+	_pause_btn.custom_minimum_size = _pause_btn.size
+	for st in ["normal", "hover", "pressed", "focus"]:
+		if _menu_btn != null and _menu_btn.has_theme_stylebox(st):
+			_pause_btn.add_theme_stylebox_override(st, _menu_btn.get_theme_stylebox(st))
+	var icon := PauseIcon.new()
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pause_btn.add_child(icon)
+	_pause_btn.pressed.connect(_on_pause_pressed)
+	add_child(_pause_btn)
+
+func _layout_pause() -> void:
+	if _pause_btn == null:
+		return
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	_pause_btn.position = _placed("pause", _pause_btn.size,
+			Vector2(screen.x - _radar_size - 12.0 - 12.0 - PAUSE_BTN, MENU_PAD), screen)
+
+func _on_pause_pressed() -> void:
+	if _game_menu != null:
+		_game_menu.open()
+
+## Back: the garage closes first, then the menu, else the menu opens. Esc on a PC does the same while
+## the machine is not in assembly (there Esc is the "Movement" key that leaves it).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_back()
+	elif what == NOTIFICATION_EXIT_TREE:
+		get_tree().quit_on_go_back = ProjectSettings.get_setting("application/config/quit_on_go_back", true)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") and not event.is_echo():
+		var v: Node = _tech_ui._get_vehicle() if _tech_ui != null else null
+		if v != null and v.get("Building") == true:
+			return
+		_back()
+		get_viewport().set_input_as_handled()
+
+func _back() -> void:
+	if _layout_editor != null and is_instance_valid(_layout_editor):
+		return
+	if _tech_ui != null and _tech_ui.visible:
+		_tech_ui.hide()
+	elif _game_menu != null:
+		_game_menu.toggle()
+
+## Three bars, the sign every phone game uses for its menu; drawn (rule 11).
+class PauseIcon extends Control:
+	func _draw() -> void:
+		var s: float = minf(size.x, size.y)
+		var w: float = s * 0.46
+		var h: float = s * 0.07
+		var c := size * 0.5
+		for i in 3:
+			var y: float = c.y + (float(i) - 1.0) * s * 0.17
+			draw_rect(Rect2(c.x - w * 0.5, y - h * 0.5, w, h), Color(0.85, 0.95, 0.97))
+
 # ── Правый ящик: смена машины ────────────────────────────────────────────────
 # Вернулся туда, где был до переделки HUD: язычок у правого края, по тапу выезжает список
 # машин. В гараж он не поехал — пересаживаться надо на ходу, а не через полноэкранное меню.
@@ -1865,7 +1950,17 @@ func _open_garage() -> void:
 		_tech_ui.open_tab(TECH_TAB_INVENTORY)
 
 const TECH_TAB_INVENTORY: int = 0
+const TECH_TAB_SHOP: int = 1
+const TECH_TAB_SETTINGS: int = 4
 const TECH_TAB_BUILD: int = 6
+
+## The garage on a tab by name, for the in-game menu and the stuck offer.
+func open_garage_tab(tab: StringName) -> void:
+	if _tech_ui == null or not _tech_ui.visible:
+		_toggle_inventory()
+	var idx: int = {&"shop": TECH_TAB_SHOP, &"settings": TECH_TAB_SETTINGS}.get(tab, TECH_TAB_INVENTORY)
+	if _tech_ui != null and _tech_ui.has_method("open_tab"):
+		_tech_ui.open_tab(idx)
 
 ## Вход в режим стройки: тот же гараж, но сразу на вкладке СТРОЙКА. Она прячет левую панель,
 ## чтобы было видно машину; глобус и кнопки поворота остаются на своих местах поверх мира.
@@ -1999,6 +2094,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_handle)
 	if _menu_btn:
 		_game_controls.append(_menu_btn)
+	if _pause_btn:
+		_game_controls.append(_pause_btn)
 	# _rotate_panel и _block_globe НЕ в общем списке: их видимость — это вкладка СТРОЙКА
 	# в гараже, а скоп «спрятать игровой HUD» её бы затирал.
 	if _radar:

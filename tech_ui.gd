@@ -1773,6 +1773,30 @@ func tutorial_target(key: String) -> Control:
 			if _filter_col != null and _filter_col.get_child_count() > 0:
 				return _filter_col.get_child(0) as Control
 			return null
+		# The tutorial's arsenal steps (tutorial_director ARSENAL): the gun's node in the tree, the
+		# Research button, and the gun's row in the inventory.
+		"tech_gun":
+			if _tech_graph == null:
+				return null
+			for c in _tech_graph.get_children():
+				if c is Control and c.has_meta("tech_bt") and int(c.get_meta("tech_bt")) == int(G.Block.GUN):
+					# Once per node (the tree rebuilds its nodes): a third down the view, clear of the
+					# strips at the bottom, and the player may scroll after.
+					if _tech_scroll != null and c.get_instance_id() != _tut_scrolled:
+						_tut_scrolled = c.get_instance_id()
+						_tech_scroll.scroll_vertical = int(maxf((c as Control).position.y - _tech_scroll.size.y * 0.3, 0.0))
+					return c as Control
+			return null
+		"tech_research":
+			return _tech_btn
+		"inv_gun":
+			if _tab != TAB_INVENTORY or _grid == null:
+				return null
+			for c in _grid.get_children():
+				if c is Slot and (c as Slot).visible and (c as Slot).action == &"take" \
+						and (c as Slot).arg == int(G.Block.GUN):
+					return c as Control
+			return null
 		"slot":
 			if _tab == TAB_SHOP:
 				for t in _sv_tiles:
@@ -2108,7 +2132,8 @@ func _on_view_distance(v: float, lbl: Label) -> void:
 
 ## THE SETTINGS TAB IS `SettingsView` (settings_view.gd), the same screen the main menu opens: one
 ## camera slider, one graphics preset row, wherever they are reached from. The garage adds only what
-## needs a world - the controls layout, the surrender and the way back to the menu. The view has its
+## needs a world - the controls layout (Surrender and Main menu live in the in-game menu, game_menu.gd,
+## where a player finds them; at the bottom of GAME here they had to be searched for). The view has its
 ## own scroll, so it sits in Body beside the list, not inside the list's ScrollContainer (a scroll in
 ## a scroll gets no height); the machine stats step aside while it is open, like for the shop.
 var _set_view: SettingsView = null
@@ -2127,8 +2152,6 @@ func _build_settings_tab() -> void:
 		_set_view.contexts = [m.Ctx.TRAVEL, m.Ctx.BATTLE]
 	_set_view.actions = [
 		["Move controls", "Put Attack, Build, the map and the rest where your thumbs reach them.", _on_move_controls, false],
-		["Main menu (switch world)", "Your world is saved. Pick another slot in the menu.", _to_main_menu, false],
-		["Surrender", "Blows up this machine's cabin: its blocks fall where it stands, and you start again in a new cabin.", _ask_surrender, true],
 	]
 	_set_view.lang_changed.connect(_on_settings_lang)
 	body.add_child(_set_view)
@@ -2150,44 +2173,6 @@ func _on_move_controls() -> void:
 		return
 	hide()                          # the garage goes first: the controls come back with it closed
 	hud.start_layout_edit()
-
-var _surrender_dialog: ConfirmationDialog = null
-
-func _ask_surrender() -> void:
-	var v: Node = _get_vehicle()
-	if v == null or not v.has_method("can_surrender") or not v.can_surrender():
-		_say(tr("Only a machine with a cabin can surrender."))
-		return
-	if _surrender_dialog == null or not is_instance_valid(_surrender_dialog):
-		_surrender_dialog = ConfirmationDialog.new()
-		_surrender_dialog.title = tr("Surrender")
-		_surrender_dialog.ok_button_text = tr("Surrender")
-		_surrender_dialog.dialog_text = tr("Destroy this machine? Its blocks fall to the ground.")
-		_surrender_dialog.confirmed.connect(_apply_surrender)
-		add_child(_surrender_dialog)
-	_surrender_dialog.popup_centered(Vector2i(380, 140))
-
-## The garage goes first: the death screen and the wreck are what is left to see.
-func _apply_surrender() -> void:
-	var v: Node = _get_vehicle()
-	if v == null or not v.has_method("surrender"):
-		return
-	hide()
-	v.surrender()
-
-## В МЕНЮ. Сначала СОХРАНЯЕМ мир: смена сцены освобождает world_persist, и без явного вызова
-## всё, что игрок настроил после последнего автосейва, осталось бы в прошлом слоте.
-func _to_main_menu() -> void:
-	var wp: Node = get_tree().get_first_node_in_group("world_persist")
-	if wp != null and wp.has_method("_save_world"):
-		wp._save_world()                     # на полигоне сам откажется (world_persist)
-	G.save_now()
-	# ФЛАГ ПОЛИГОНА СНИМАЕТСЯ ЗДЕСЬ, В ЕДИНСТВЕННОЙ ДВЕРИ ОБРАТНО В МЕНЮ. Он живёт в автолоаде,
-	# то есть переживает смену сцены, и забытый флаг означал бы следующую НАСТОЯЩУЮ игру на
-	# ровной земле, с бесконечным складом и без сейва. Снимаем через G: там же сбрасывается
-	# отложенная запись и перечитывается настоящий прогресс.
-	G.leave_proving_ground()
-	get_tree().change_scene_to_file("res://menu.tscn")
 
 # Строка «подпись + ползунок + значение» для настроек камеры (0.2..3.0).
 func _cam_slider(label: String, value: float, on_change: Callable) -> Control:
@@ -2315,7 +2300,10 @@ func _build_tech_tab() -> void:
 	for bt in pos:
 		maxx = maxf(maxx, (pos[bt] as Vector2).x)
 		maxy = maxf(maxy, (pos[bt] as Vector2).y)
-	graph.custom_minimum_size = Vector2(maxx + TNODE_W + TMARGIN, maxy + TNODE_H + TMARGIN)
+	# TREE_TAIL under the last row: the info panel and the dialogue strip lie over the scroll's bottom,
+	# and the last nodes (the Machine Gun among them, the tutorial's target) could not be scrolled out
+	# from under them.
+	graph.custom_minimum_size = Vector2(maxx + TNODE_W + TMARGIN, maxy + TNODE_H + TMARGIN + TREE_TAIL)
 	# Линии связей: правый-центр родителя → левый-центр ребёнка.
 	var edges: Array = []
 	for bt in G.TECH_PARENT:
@@ -2509,6 +2497,7 @@ func _tech_depth(bt: int) -> int:
 
 func _make_tech_node(bt: int, at: Vector2) -> Control:
 	var btn := Button.new()
+	btn.set_meta("tech_bt", bt)              # tutorial_target("tech_gun") finds a node by it
 	btn.position = at
 	btn.size = Vector2(TNODE_W, TNODE_H)
 	btn.clip_text = true
@@ -2561,6 +2550,8 @@ func _make_tech_node(bt: int, at: Vector2) -> Control:
 	return btn
 
 const TECH_DOUBLE_MS := 400
+const TREE_TAIL := 220.0
+var _tut_scrolled: int = 0
 var _tech_last_bt: int = -1
 var _tech_last_ms: int = 0
 

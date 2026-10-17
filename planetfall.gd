@@ -779,7 +779,7 @@ func _give_kit() -> void:
 		return
 	_kit_given = true
 	if is_instance_valid(_machine) and _machine.has_method("award_block_list"):
-		_machine.award_block_list(G.STARTER_KIT)
+		_machine.award_block_list(G.FIRST_KIT)
 
 # ── the camera ──────────────────────────────────────────────────────────────────────────────────
 

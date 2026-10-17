@@ -661,7 +661,7 @@ func _fresh_start() -> void:
 		load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	if not kit_given:
-		primary.award_block_list(G.STARTER_KIT)
+		primary.award_block_list(G.FIRST_KIT)
 
 ## THE INTRO MAY NOT COST THE START (the player: "no animation, no starter blocks, no burning ground"
 ## - the intro had taken over laying both, so anything that stopped it took them too). It gets

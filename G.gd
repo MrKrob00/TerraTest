@@ -532,7 +532,7 @@ const BLOCK_META := {
 	Block.COLLECTOR: {"f": "start", "g": 1, "rp": 10},
 	Block.RECEIVER:    {"f": "start", "g": 2, "rp": 15},
 	Block.BELT:      {"f": "start", "g": 2, "rp": 15},
-	Block.GUN:       {"f": "start", "g": 2, "rp": 15},
+	Block.GUN:       {"f": "start", "g": 1, "rp": 0},     # the tutorial researches it (tutorial_director)
 	Block.SOLAR:     {"f": "start", "g": 2, "rp": 15},
 	Block.PROCESSOR: {"f": "start", "g": 3, "rp": 20},
 	Block.SELLER:    {"f": "start", "g": 3, "rp": 20},
@@ -1610,6 +1610,12 @@ const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.SMALL_WHEEL, Block.SM
 ## Один список на оба места, чтобы «начало игры» и «после смерти» не разъезжались.
 const STARTER_KIT := [Block.BLOCK, Block.BLOCK, Block.SMALL_WHEEL, Block.SMALL_WHEEL,
 		Block.SMALL_WHEEL, Block.SMALL_WHEEL, Block.SMALL_DRILL, Block.GUN]
+## A NEW GAME'S KIT HAS NO GUN (the player's call): the tutorial's last steps research the Machine
+## Gun in the tree (grade 1, 0 RP - research hands one over) and bolt it on from the inventory, so the
+## tree and the inventory are met with a reason to open them. A respawn keeps the gun (`starter_kit`):
+## after a death in a fight there must be something to answer with.
+const FIRST_KIT := [Block.BLOCK, Block.BLOCK, Block.SMALL_WHEEL, Block.SMALL_WHEEL,
+		Block.SMALL_WHEEL, Block.SMALL_WHEEL, Block.SMALL_DRILL]
 ## THE SAME KIT IN MARLIT'S BLOCKS, handed out once Marlit is licensed (the player's call): after a
 ## death the cabin comes back as Marlit's and the kit round it is Marlit's (`starter_kit`).
 const STARTER_KIT_MARLIT := [Block.MARLIT_BLOCK, Block.MARLIT_BLOCK, Block.MARLIT_WHEEL,
