@@ -1163,7 +1163,10 @@ func _on_building_pressed() -> void:
 		# ПОДБРАСЫВАЕМ НАД САМОЙ ВЫСОКОЙ ЗЕМЛЁЙ ПОД МАШИНОЙ, а не на четыре метра от того места,
 		# где стояли. У горы это разные вещи: под кабиной низко, под хвостом склон.
 		var want: float = _ground_under_machine() + BUILD_HOVER_CLEARANCE
-		global_position.y = maxf(global_position.y + 4.0, want)
+		# A MACHINE ALREADY HOVERING STAYS (planetfall raises the new cabin to this height and hands it
+		# over in assembly): another 4 m on top was a jump in the picture as the game began.
+		if global_position.y < want - 0.5:
+			global_position.y = maxf(global_position.y + 4.0, want)
 	map = global_position.y
 
 # Интерактивные узлы HUD, тап по которым НЕ должен наводить блок в мир.

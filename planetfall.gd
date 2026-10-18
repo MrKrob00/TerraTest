@@ -42,8 +42,29 @@ const T_HIT := 5.6            # the passing debris strikes the capsule
 const T_BOOM := 15.6          # blows up in front of the sign
 const T_LAND := [19.4, 19.8, 20.3]   # the debris lands; MAIN lands on the start point
 const MAIN := 1
-const T_HANDOVER := 20.8
-const T_END := 23.0
+# THE LANDING HANDS OVER WITHOUT A JUMP (the player's call: the tutorial's assembly lifted the cabin 4 m
+# the moment the intro ended - a cut in the picture). The cabin comes up out of the landing BATTERED,
+# its damage digits red; it rises to the build hover's height (`T_RISE`), green repair digits gather
+# round it and fly in (`HEAL_*`, regen_digit.gdshader, each mending its share as it lands, so the red
+# greens digit by digit); repaired, the kit circles it (`T_KIT`) and only then the camera glides into
+# the game's. While the tutorial runs, the machine is left IN ASSEMBLY at that height
+# (`vehicle_body_3d._on_building_pressed` keeps a machine already hovering), so nothing moves when
+# control passes. Without the tutorial it stays on the ground as before.
+const T_RISE := 1.2           # s after the landing to rise to the hover height
+const LAND_SIT := 0.6         # the cabin's middle over the ground as it comes down
+const HEAL_HP := 0.25         # the cabin's share of hit points as it comes out of the landing
+const HEAL_DIGITS := 36
+const HEAL_FROM := 0.5        # s after the landing the first digit appears
+const HEAL_STAGGER := 1.2     # s over which they appear
+const HEAL_SPAWN := 0.35      # s a digit hangs blinking in (regen.DIGIT_SPAWN)
+const HEAL_FLY := 0.8         # s to the cabin
+const HEAL_R := Vector2(2.5, 4.5)   # m round the cabin they appear at
+const T_KIT := 3.4            # s after the landing the kit comes out
+const CLOSE_IN := 1.4         # s after the landing the camera takes to come in to the cabin...
+const CLOSE_BACK := 9.0       # ...this far off it, on the bearing it stood on,
+const CLOSE_UP := 3.5         # this much over it: the rise, the digits and the kit's orbit in frame
+const T_HANDOVER := 19.8 + T_KIT + 0.4   # T_LAND[MAIN] + the kit + a breath
+const T_END := T_HANDOVER + 2.2
 const SKIP_AFTER := 0.8       # a tap before this is the one that closed the loading screen
 ## A DOUBLE TAP SKIPS, NOT A TAP (the player: one stray touch three seconds in took the whole intro
 ## away): the second release within this of the first, as the game's own double tap
@@ -146,6 +167,12 @@ var _emit_from := Vector3.ZERO
 var _said: int = 0
 var _landed_main: bool = false
 var _kit_given: bool = false
+var _rise: bool = false          # the tutorial runs: the cabin rises and is handed over in assembly
+var _rise_from := Vector3.ZERO
+var _rise_y: float = 0.0
+var _cab: Node = null            # the cabin block, battered by the landing
+var _heal_mm: MultiMeshInstance3D = null
+var _heal: Array = []            # {start, t, side, hp, landed}
 var _skip_lbl: Label = null
 var _snd: Dictionary = {}       # name -> AudioStreamPlayer
 var _cam_end := Vector3.ZERO    # where the camera stands as the main piece lands
@@ -505,6 +532,9 @@ func _process(delta: float) -> void:
 		_tick_pod(delta)
 		_tick_hitter()
 		_tick_debris(delta)
+		_tick_landing(delta)
+		if _rise and _landed_main and _t >= float(T_LAND[MAIN]) + T_KIT:
+			_give_kit()
 		_tick_sound()
 		if is_instance_valid(_skip_lbl):
 			_skip_lbl.modulate.a = clampf((_t - 1.5) * 2.0, 0.0, 0.55) * (1.0 - clampf((_t - (T_END - 1.5)) * 2.0, 0.0, 1.0))
@@ -761,7 +791,10 @@ func _lay_site() -> void:
 	if is_instance_valid(_machine):
 		_machine.remove_meta("intro_hidden")
 		_machine.visible = true
-		if _machine is RigidBody3D:
+		_rise = Q.tutorial_active() and _machine.has_method("ground_under_machine")
+		if _rise:
+			_batter()
+		elif _machine is RigidBody3D:
 			(_machine as RigidBody3D).freeze = false
 		# its own glitch, not BlockFX.materialise: that one sizes its cards by every child of the
 		# machine's `blocks`, and on the player's cabin they came out as 20 m panels over the screen
@@ -773,6 +806,109 @@ func _lay_site() -> void:
 		if d["landed"] and not d["main"] and is_instance_valid(d["node"]) and site != null \
 				and (d["node"] as Node).get_parent() == self:
 			(d["node"] as Node).reparent(site, true)
+
+## The cabin out of the landing: battered, red digits, rising; the repair digits laid out round it.
+func _batter() -> void:
+	# It comes down ON the ground with the piece that carried it (the hidden cabin waited on its start
+	# point at whatever height the seat left it), then rises the whole way to the hover.
+	var ground: float = float(_machine.ground_under_machine())
+	_rise_from = _machine.global_position
+	_rise_from.y = minf(_rise_from.y, ground + LAND_SIT)
+	_rise_y = ground + float(load("res://vehicle_body_3d.gd").BUILD_HOVER_CLEARANCE)
+	var bm = _machine.get("block_map_node")
+	if bm != null:
+		for b in bm.get_children():
+			if b is VehicleBlock and G.is_cabin((b as VehicleBlock).block):
+				_cab = b
+	if not is_instance_valid(_cab):
+		return
+	var cab := _cab as VehicleBlock
+	var missing: int = cab.max_hp - int(cab.max_hp * HEAL_HP)
+	cab.current_hp = cab.max_hp - missing
+	cab._refresh_hp_fx()
+	_heal_mm = MultiMeshInstance3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var q := QuadMesh.new()
+	q.size = Vector2(0.32, 0.32)                       # regen.DIGIT_SIZE
+	mm.mesh = q
+	mm.instance_count = HEAL_DIGITS
+	_heal_mm.multimesh = mm
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://regen_digit.gdshader")
+	_heal_mm.material_override = mat
+	_heal_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_heal_mm.custom_aabb = AABB(Vector3.ONE * -12.0, Vector3.ONE * 24.0)
+	add_child(_heal_mm)
+	var each: int = missing / HEAL_DIGITS
+	var extra: int = missing - each * HEAL_DIGITS
+	for k in HEAL_DIGITS:
+		var dir := Vector3(randf_range(-1, 1), randf_range(-0.3, 1), randf_range(-1, 1)).normalized()
+		_heal.append({"start": dir * randf_range(HEAL_R.x, HEAL_R.y), "seed": randf(), "landed": false,
+			"t": -HEAL_FROM - HEAL_STAGGER * float(k) / float(HEAL_DIGITS), "side": randf_range(-0.6, 0.6),
+			"hp": each + int(k < extra)})
+		mm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		mm.set_instance_custom_data(k, Color(0, randf(), 0, 0))
+
+## The rise, and the digits flying in; each one mends its share as it lands.
+func _tick_landing(delta: float) -> void:
+	if not _rise or not _landed_main or not is_instance_valid(_machine):
+		return
+	var since: float = _t - float(T_LAND[MAIN])
+	var k: float = smoothstep(0.0, T_RISE, since)
+	_machine.global_position = Vector3(_rise_from.x, lerpf(_rise_from.y, _rise_y, k), _rise_from.z)
+	if not is_instance_valid(_heal_mm):
+		return
+	var mm := _heal_mm.multimesh
+	var centre: Vector3 = (_machine as Node3D).global_position + Vector3.UP * 0.5
+	for i in _heal.size():
+		var f: Dictionary = _heal[i]
+		f["t"] = float(f["t"]) + delta
+		var t: float = f["t"]
+		var start: Vector3 = centre + (f["start"] as Vector3)
+		var pos := start
+		var alpha := 0.0
+		var size := 1.0
+		if t >= 0.0 and t < HEAL_SPAWN:
+			size = t / HEAL_SPAWN
+			alpha = size * (0.6 + 0.4 * float(int(t * 30.0) % 2))
+		elif t >= HEAL_SPAWN and t < HEAL_SPAWN + HEAL_FLY:
+			var u: float = (t - HEAL_SPAWN) / HEAL_FLY
+			u = u * u * (3.0 - 2.0 * u)
+			var mid: Vector3 = (start + centre) * 0.5 + Vector3.UP * 0.9
+			mid += (centre - start).cross(Vector3.UP).normalized() * float(f["side"])
+			pos = start.lerp(mid, u).lerp(mid.lerp(centre, u), u)
+			alpha = 1.0
+		elif t >= HEAL_SPAWN + HEAL_FLY:
+			if not f["landed"]:
+				f["landed"] = true
+				_mend_cab(int(f["hp"]))
+			mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+			continue
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * size), pos))
+		mm.set_instance_custom_data(i, Color(alpha, f["seed"], 0, 0))
+
+func _mend_cab(hp: int) -> void:
+	if not is_instance_valid(_cab):
+		return
+	var cab := _cab as VehicleBlock
+	cab.current_hp = mini(cab.current_hp + hp, cab.max_hp)
+	cab._refresh_hp_fx()
+
+## Skipped or run out: the cabin whole, at its height, the digits gone.
+func _settle_landing() -> void:
+	if not _rise:
+		return
+	for f in _heal:
+		if not f["landed"]:
+			f["landed"] = true
+			_mend_cab(int(f["hp"]))
+	_heal.clear()
+	if is_instance_valid(_heal_mm):
+		_heal_mm.queue_free()
+	if is_instance_valid(_machine):
+		_machine.global_position = Vector3(_rise_from.x, _rise_y, _rise_from.z)
 
 func _give_kit() -> void:
 	if _kit_given:
@@ -830,6 +966,11 @@ func _shot(t: float) -> Transform3D:
 		c.y = y
 		aim = aim.lerp(_debris_at(MAIN, t), smoothstep(T_BOOM, T_BOOM + 0.9, t))
 		aim = aim.lerp(_s + Vector3.UP * 2.0, smoothstep(land - 0.9, land, t))
+		if _rise and t > land and is_instance_valid(_machine):    # in to the cabin and up with it
+			var cab: Vector3 = (_machine as Node3D).global_position + Vector3.UP * 0.5
+			aim = aim.lerp(cab, smoothstep(land, land + 0.5, t))
+			var off: Vector3 = Vector3(_cam_end.x - cab.x, 0.0, _cam_end.z - cab.z).normalized()
+			c = c.lerp(cab + off * CLOSE_BACK + Vector3.UP * CLOSE_UP, smoothstep(land, land + CLOSE_IN, t))
 		if t >= land and is_instance_valid(_logo):
 			_logo.queue_free()
 	c.y = maxf(c.y, G.ground_y(c, c.y - 100.0) + 5.0)
@@ -966,7 +1107,15 @@ func _finish() -> void:
 	if is_instance_valid(_skip_lbl):
 		_skip_lbl.get_parent().queue_free()
 	_lay_site()
+	_settle_landing()
 	_give_kit()
+	# Handed over in assembly at the height it already hovers at: the tutorial's first step finds it
+	# there (`tutorial_director` "tut_mode_build" reports a machine already building).
+	if _rise and is_instance_valid(_machine):
+		if _machine is RigidBody3D:
+			(_machine as RigidBody3D).freeze = false
+		if _machine.has_method("_on_building_pressed"):
+			_machine._on_building_pressed()
 	var q: Node = get_node_or_null("/root/Q")
 	if q != null and q.has_method("announce_start"):
 		q.announce_start()

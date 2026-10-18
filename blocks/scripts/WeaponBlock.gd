@@ -1,7 +1,7 @@
 extends VehicleBlock
 class_name WeaponBlock
 
-@export var damage: int = 13
+@export var damage: int = 26
 ## What kind of damage this weapon deals (VehicleBlock.Dmg, the wiki's table in VehicleBlock): a
 ## subclass sets it in `_init` so a scene (the heavy cannons) can still override the export.
 @export var damage_kind: int = VehicleBlock.Dmg.BULLET

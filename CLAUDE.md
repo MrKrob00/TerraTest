@@ -951,7 +951,10 @@ project: read it before claiming how anything works.
   WEAPON WAS HALVED AGAIN** (the player's call), the numbers themselves so the codex reads them: gun 13
   a shot (65 dps), laser 43, shotgun pellet 11, heavy cannon 77, rocket blast 116, mortar shell 31;
   Marlit gun 21, laser 78, shotgun 13, cannon 154, mortar 46 (Aero and Stryx follow through
-  `G.FACTION_DAMAGE`). Not the drill and not the blasts: they are no guns, and a vein's hit points
+  `G.FACTION_DAMAGE`). **AND THEN DOUBLED BACK** (the player's call: "raise the guns' damage twice"):
+  gun 26, laser 86, shotgun pellet 22, heavy cannon 154, rocket blast 232, mortar shell 62; Marlit gun 42,
+  laser 156, shotgun 26, cannon 308, mortar 92 - the numbers in the scripts and scenes, so the codex
+  reads them; the cabins kept their 1.5 division. Not the drill and not the blasts: they are no guns, and a vein's hit points
   are tuned to the drill (a gun shooting a vein mines at half now). THE CABIN IS 2.5 BLOCKS OF ITS
   FACTION OVER 1.5 (the player's rules, the second with that halving): Falsus 417, Marlit 2917, Aero
   292, Stryx 542 (they were 625 / 4375 / 438 / 812). A weapon without its own row
@@ -2139,8 +2142,17 @@ project: read it before claiming how anything works.
   opening; models `art/intro_models.py` -> `resources/intro/`): the drop capsule falls burning out of
   the sky with System lines, a burnt piece of something clips it, it passes the WORLDTECH sign and
   blows up in front of it, three burning pieces fall trailing smoke onto the meadow, the last ONTO THE
-  START POINT - and THAT LANDING lays the smouldering ground, glitches the cabin in and hands out the
-  kit; then the camera glides into the game camera. Raised by `world_persist._fresh_start` (a new
+  START POINT - and THAT LANDING lays the smouldering ground and glitches the cabin in. THE HAND-OVER
+  HAS NO JUMP (the player's design; the tutorial's assembly used to lift the cabin 4 m the moment the
+  intro ended): while the tutorial runs the cabin comes out BATTERED (`HEAL_HP`, red digits) ON THE
+  GROUND (`LAND_SIT`: the hidden cabin waited higher, and rose half a metre), RISES to the build hover's
+  height (`T_RISE`) with the camera coming in to it (`CLOSE_*`: from where the descent left it the
+  cabin was a speck), green repair digits gather round it and fly in, each mending its share (`HEAL_*`,
+  regen_digit.gdshader), the kit circles it (`T_KIT`), the camera glides into the game camera, and the
+  machine is left IN ASSEMBLY where it hovers (`_on_building_pressed` keeps a machine already at the
+  hover height). The tutorial's blueprint waits for the hand-over (`tutorial_director._show_blueprint`
+  clears any laid before the intro began): its white outlines covered the digits. A skip lays the same
+  end at once (`_settle_landing`). Checked on the real driver through the whole run. Raised by `world_persist._fresh_start` (a new
   world only, not the proving ground; the debug switch `intro` on Main skips it), which awaits its
   `finished`. It starts when the loading screen begins to dissolve. A DOUBLE TAP SKIPS IT (`SKIP_DOUBLE`;
   a single tap did, and a stray touch took the intro away - the player's report), counted once a
@@ -2803,7 +2815,10 @@ project: read it before claiming how anything works.
   AND THE STICK READS THE THUMB FROM WHERE IT LANDED (`_landed`): clamped inward from a press in the
   very corner, it read the offset as full lock before the thumb moved. Drawn in the HUD's fill and
   teal ring: four chevrons that light toward the push, an arc outside the rim along it (on the rim the
-  knob covered it), a bevelled knob; faint at rest. It ticks only while it eases. Measured with
+  knob covered it), a bevelled knob; faint at rest. It ticks only while it eases. A HIDDEN STICK LETS GO
+  (`_notification`): the engine stops a TouchScreenButton's input while it is hidden, so a thumb held
+  on the stick as the garage opened lifted unseen and the stick stayed held for good, refusing every
+  later press (the player's report; measured: held, hidden, shown - released, direction zero). Measured with
   synthetic touches on the real driver: claimed in the zone and on the resting stick, not past it;
   a push (70, -50) reads (0.61, -0.44); a corner press reads (0, 0); released, it is home and idle.
 - THE WORLD TAP IS ONE FINGER, TRACKED BY INDEX (`vehicle_body_3d._build_tap_idx`), and the
@@ -3645,8 +3660,10 @@ project: read it before claiming how anything works.
   three open with the emitter swollen, a loose block 6.5 m away healed 17 a tick.
 - **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", at Falsus grade 4;
   `quest_arcs._yellow_1`; the id is kept, saves and `G.FACTION_LICENCE` key on it). The player's
-  design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
-  from the player and the licence is granted when it dies. A Marlit hull round a cabin, four
+  design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) DROPS IN AHEAD OF THE PLAYER AS THE
+  SCOUT DOES (`YELLOW_NEAR` along the heading, once they drive, past the clearance by `arrival`, its
+  drop ring announcing it, coming for them; born 200 m off in a random direction its ring was never
+  seen and it read as "spawned past the normal way") and the licence is granted when it dies. A Marlit hull round a cabin, four
   `MARLIT_WHEEL`, a Marlit gun and a Marlit shotgun on the nose, plates on the nose - about 40k,
   the fourth step (31.6k median); outside the ladder, so no ceiling shrinks it. Its cabin and wheels
   are Marlit's own now (below). It was a collection point where resources were handed
@@ -3805,14 +3822,19 @@ project: read it before claiming how anything works.
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
   (`pulse`) as each repair lands. **IT IS UP WHENEVER THE UNIT IS MOUNTED AND POWERED** (the player's call: "only while there is
-  something to mend" was tried and taken back - the field says the unit works); it eases in over
+  something to mend" was tried and taken back - the field says the unit works) - POWERED MEANS ENOUGH
+  FOR ONE DIGIT OF REPAIR (`_powered`: up from two digits' worth of energy, down under one): a battery
+  near empty kept the field up while the budget rounded to nothing (the player's report); it eases in over
   `FIELD_FADE`, and unmounted or unpowered it is off at once (`_field_off`). THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
   per `HP_PER_DIGIT` (5) hit points mended, at least one per block, at most `DIGITS_MAX_PER_HEAL`;
   a block mended again while its digits fly gets its own new ones in the same group. They appear
   ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink
-  in, and fly to the block along an arc; THE HIT POINTS LAND WITH THEM
-  (`_land` -> `_mend`), so the block's damage overlay greens as they arrive - a block with digits
-  still on the way is not charged or sent more. The digits are ONE MultiMesh per unit, a pool of
+  in, and fly to the block along an arc; EVERY DIGIT CARRIES ITS SHARE AND MENDS IT AS IT LANDS
+  (`_land(flight)` -> `_mend`), so the overlay flashes green with each one. The hit points used to
+  land with the group's LAST digit, and a block repaired tick after tick had the next tick's digits
+  joining its group before that one came down: nothing landed until the repair stopped, and the red
+  turned green only then (the player's report; measured after: a block at 20% mended in 41 steps of
+  5 HP over 6 s, 40 flashes). A digit with no free slot to carry it is mended at once. The digits are ONE MultiMesh per unit, a pool of
   twice a tick's budget in digits plus `max_bodies` cards written on the CPU only while any flies: no node per heal.
   What this replaced: ninety cards orbiting the field for good and one glitch bolt per heal
   (`BlockFX.repair_stream`, gone), which built a node per heal and was 40% of the unit's work.

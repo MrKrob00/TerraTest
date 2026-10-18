@@ -25,7 +25,7 @@ extends WeaponBlock
 ## четыре раза в секунду. Так у оружия появляется собственный ритм: видно, как ствол копит и
 ## когда разрядится, и по этому ритму от него можно уйти за угол.
 @export var laser_fire_rate: float = 0.9
-@export var laser_damage: int = 43
+@export var laser_damage: int = 86
 const BULLET_SCRIPT := preload("res://blocks/scripts/bullet.gd")
 
 ## НАКОПИТЕЛЬ: кольца, сбегающиеся к дулу. Их три и они идут со сдвигом фазы, поэтому поток

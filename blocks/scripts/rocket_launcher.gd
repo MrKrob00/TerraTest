@@ -11,7 +11,7 @@ class_name RocketLauncher
 ## клеток поперёк, и целиться ракетой было незачем — она и так забирала всё вокруг.
 @export var aoe_radius: float = 1.5
 ## Урон в эпицентре (к краю радиуса спадает до ~15%).
-@export var aoe_damage: int = 116
+@export var aoe_damage: int = 232
 
 func _init() -> void:
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour

@@ -475,12 +475,13 @@ func _arc_power_2(q: Dictionary) -> void:
 # MARLIT'S LICENCE IS WON IN A FIGHT (arc_yellow)
 # ══════════════════════════════════════════════════════════════════════════════
 # The player's design: Marlit sends its champion, a machine of the fourth step built of Marlit
-# blocks (blocks.MARLIT_CHAMPION, outside the ladder so no ceiling shrinks it), about
-# YELLOW_DIST from the player; destroying it is the licence. It used to be a collection point where
+# blocks (blocks.MARLIT_CHAMPION, outside the ladder so no ceiling shrinks it), dropped in
+# ahead of the player (YELLOW_NEAR); destroying it is the licence. It used to be a collection point where
 # resources were handed in - a TerraTech mission that was not this one - and every load planted
 # another point, because the poll ran before the saved base came back; those are swept up
 # (`_sweep_yellow_points`) from old saves.
-const YELLOW_DIST := 200.0
+const YELLOW_NEAR := Vector2(70.0, 90.0)   # m ahead of the player; the champion is a big build
+const YELLOW_MOVING := 2.0                # m/s: the player is driving
 const CHAMPION_PRESET := 120              # blocks.MARLIT_CHAMPION
 
 var _yellow_point: Variant = null
@@ -498,15 +499,31 @@ func _yellow_1(q: Dictionary) -> void:
 		var map: Node = get_node_or_null("/root/Main/map")
 		if p == null or (map != null and map.get("terrain_is_ready") == false):
 			return
-		if _yellow_point == null:
-			var ang: float = randf() * TAU
-			var wp: Vector3 = p.global_position + Vector3(cos(ang), 0.0, sin(ang)) * YELLOW_DIST
-			wp.y = G.ground_y(wp, p.global_position.y)
-			_yellow_point = wp
-		_yellow_e = _spawn_hostile(get_node_or_null("/root/Main/EnemySpawner"), _yellow_point as Vector3,
-				CHAMPION_PRESET)
+		# IT DROPS IN AHEAD OF THE PLAYER, AS THE SCOUT DOES (the player's call): born 200 m off in a
+		# random direction its drop ring was never seen, and a machine simply drove up out of nowhere.
+		# Asked once the player drives (not in assembly, the garage or on an anchor), `YELLOW_NEAR`
+		# along the heading, past the clearance (`arrival`), and the drop ring announces it.
+		if p.get("Building") == true or p.get("anchored") == true or p.get("is_station") == true \
+				or not (p is RigidBody3D) \
+				or (p as RigidBody3D).linear_velocity.length_squared() < YELLOW_MOVING * YELLOW_MOVING:
+			return
+		var fwd: Vector3 = -p.global_basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized() if fwd.length_squared() > 0.0001 else Vector3.FORWARD
+		var wp: Vector3 = p.global_position + fwd.rotated(Vector3.UP, randf_range(-0.4, 0.4)) \
+				* randf_range(YELLOW_NEAR.x, YELLOW_NEAR.y)
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_yellow_point = wp
+		var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+		if sp != null:
+			sp.set("arrival", true)
+		_yellow_e = _spawn_hostile(sp, wp, CHAMPION_PRESET)
+		if sp != null:
+			sp.set("arrival", false)
 		if _yellow_e == null:
 			return
+		if _yellow_e.has_method("assign_target"):
+			_yellow_e.assign_target(p, true)
 		_yellow_e.set_meta("story", true)          # the kill marker looks for this first
 		_yellow_sent = true
 		return

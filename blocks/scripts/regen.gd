@@ -68,6 +68,7 @@ var _crystal_col: Color = CRYSTAL_OFF
 var _spin: float = 0.0
 var _bob: float = 0.0
 var _heal_flash: float = 0.0
+var _powered: bool = false
 
 func unbatched() -> Array:
 	var c := get_node_or_null("Crystal")
@@ -182,19 +183,25 @@ func _launch(b: Node3D, hp: int) -> bool:
 	var id: int = b.get_instance_id()
 	var want: int = clampi(ceili(float(hp) / float(HP_PER_DIGIT)), 1, DIGITS_MAX_PER_HEAL)
 	var n: int = mini(want, _free.size()) if _digits != null else 0
+	if n <= 0:
+		return false                         # no digit free to carry it: mended at once
 	if _groups.has(id):
 		_groups[id]["hp"] = int(_groups[id]["hp"]) + hp
 		_groups[id]["left"] = int(_groups[id]["left"]) + n
-	elif n <= 0:
-		return false
 	else:
 		_groups[id] = {"block": b, "hp": hp, "left": n}
+	# EVERY DIGIT CARRIES ITS SHARE AND MENDS IT AS IT LANDS (`_land`). The group's hit points used to
+	# land with its LAST digit, and a block repaired tick after tick had digits of the next tick
+	# joining it before the last one came down: nothing landed until the repair ended, and the red
+	# overlay turned green only then (the player's report).
+	var each: int = hp / n
+	var extra: int = hp - each * n
 	for k in n:
 		# Anywhere inside the field (uniform in its volume: the cube root), not at the core: a whole
 		# swarm leaving one point read as a fountain, not as the field doing the work.
 		var start := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized() \
 				* field_radius * DIGIT_SPREAD * pow(randf(), 1.0 / 3.0)
-		_flights.append({"slot": _free.pop_back(), "group": id, "start": start,
+		_flights.append({"slot": _free.pop_back(), "group": id, "start": start, "hp": each + int(k < extra),
 			"t": -k * minf(0.08, 0.5 / float(n)), "side": randf_range(-0.5, 0.5), "seed": randf()})
 	return true
 
@@ -229,7 +236,7 @@ func _process(delta: float) -> void:
 			if not f.get("landed", false):
 				f["landed"] = true
 				if not gone:
-					_land(f["group"])
+					_land(f)
 				else:
 					_groups.erase(f["group"])
 			mm.set_instance_transform(f["slot"], Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
@@ -258,7 +265,7 @@ func _process(delta: float) -> void:
 		else:
 			if not f.get("landed", false):
 				f["landed"] = true
-				_land(f["group"])
+				_land(f)
 			var k2: float = (t - DIGIT_SPAWN - DIGIT_FLY) / DIGIT_FADE
 			pos = target
 			alpha = 1.0 - k2
@@ -267,18 +274,20 @@ func _process(delta: float) -> void:
 		mm.set_instance_custom_data(f["slot"], Color(alpha, f["seed"], 0, 0))
 	_flights = keep
 
-## A digit reached its block; the last of its group brings the hit points.
-func _land(group: int) -> void:
+## A digit reached its block and mends the hit points it carries.
+func _land(f: Dictionary) -> void:
+	var group: int = f["group"]
 	var g: Dictionary = _groups.get(group, {})
 	if g.is_empty():
 		return
+	var hp: int = int(f.get("hp", 0))
+	g["hp"] = int(g["hp"]) - hp
 	g["left"] = int(g["left"]) - 1
-	if int(g["left"]) > 0:
-		return
-	_groups.erase(group)
+	if int(g["left"]) <= 0:
+		_groups.erase(group)
 	var b = g.get("block")
-	if is_instance_valid(b):
-		_mend(b, int(g["hp"]))
+	if is_instance_valid(b) and hp > 0:
+		_mend(b, hp)
 	_pulse = 1.0
 
 func _mend(b: Node, hp: int) -> void:
@@ -315,7 +324,13 @@ func _work(delta: float) -> bool:
 	# БЕЗ ЭНЕРГИИ ПОЛЯ НЕТ ВОВСЕ. Раньше оно лишь тускнело, и обесточенный реген выглядел
 	# работающим: игрок видел купол и ждал починки, которой не будет. Показываем ровно то,
 	# что происходит, — как это делает щит (shield.gd прячет свой купол по тому же признаку).
-	var powered: bool = vehicle.has_method("energy_available") and vehicle.energy_available() > 0.0
+	# AND NOT WITHOUT ENOUGH FOR ONE DIGIT OF REPAIR (the player: a battery near empty kept the field
+	# up while nothing was mended - the budget rounded to zero). Up from two digits' worth, down under
+	# one, so a trickle of charge round the line does not blink it.
+	var hp_left: float = float(vehicle.energy_available()) * hp_per_energy \
+			if vehicle.has_method("energy_available") else 0.0
+	_powered = hp_left >= float(HP_PER_DIGIT) * (1.0 if _powered else 2.0)
+	var powered: bool = _powered
 	if not powered:
 		_field_off()
 		return false

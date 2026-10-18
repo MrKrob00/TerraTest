@@ -246,9 +246,16 @@ var _hints: Array = []
 ## Разложить чертёж на машине игрока. Зовётся, когда обучение дошло до сборки, и ровно один
 ## раз: призрак гаснет сам, когда в его клетке появился нужный блок.
 func _show_blueprint() -> void:
+	var v: Node = _vehicle()
+	# Not before the intro has handed the cabin over: its outlines covered the red digits and the
+	# repair coming in. Ones laid before the intro began (the first ticks of a world) go again.
+	if not G.world_ready() or get_tree().get_first_node_in_group("planetfall_intro") != null \
+			or (v != null and v.has_meta("intro_hidden")):
+		if not _hints.is_empty():
+			_clear_blueprint()
+		return
 	if not _hints.is_empty():
 		return
-	var v: Node = _vehicle()
 	if v == null or v.get("block_map_node") == null:
 		return
 	var bm = v.block_map_node

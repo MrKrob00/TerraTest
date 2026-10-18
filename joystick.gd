@@ -82,6 +82,16 @@ func _input(event: InputEvent) -> void:
 		_knob_shown = knob_pos
 		queue_redraw()
 
+## A HIDDEN STICK LETS GO. The engine stops a TouchScreenButton's input while it is hidden
+## (`touch_screen_button.cpp`, process_input follows visibility), so a thumb held on the stick while
+## the garage opened lifted unseen: the stick stayed held at its last push for good, and every later
+## press was refused as a second finger (the player's report).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and not is_visible_in_tree() and active_touch_index != -1:
+		active_touch_index = -1
+		knob_pos = Vector2.ZERO
+		_wake()
+
 ## Would a press here start the stick? In the zone, or on the resting stick, and not on a HUD control.
 func claims(p: Vector2) -> bool:
 	if not is_visible_in_tree():
