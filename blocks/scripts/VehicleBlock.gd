@@ -187,140 +187,143 @@ static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) ->
 ## plates by area, a half block two thirds.
 ## THE CABIN IS 2.5 BLOCKS OF ITS FACTION OVER 1.5 (the player's rules, the second cutting it by
 ## 1.5 when every weapon's damage was halved): Falsus 417, Marlit 2917.
+## THEN EVERY ROW BUT THE FOUR CABINS x1.5, DEFAULT_HP WITH THEM (the player's call: "raise the
+## blocks' hit points one and a half times, not the cabins"): a Falsus block 375, a Marlit block 2625.
+## The battery's blast is a share of BLOCK and grew with it; the cabins did not.
 ## A weapon without a row falls to DEFAULT_HP and is the most fragile thing on the machine - which is
 ## what the enemy aims at.
 const BLOCK_HP: Dictionary = {
 	G.Block.CABIN:     417,       # 2.5 blocks / 1.5 (the player's rules): the heart, not a bunker
-	G.Block.WHEEL:     190,
-	G.Block.BLOCK:     250,
-	G.Block.DRILL:     265,      # носовой блок: принимает удар первым, им же и работают
-	G.Block.COLLECTOR: 140,
-	G.Block.RECEIVER:    140,
-	G.Block.BELT:      110,
-	G.Block.PROCESSOR: 280,
-	G.Block.SELLER:    205,
-	G.Block.BATTERY:   170,
-	G.Block.SOLAR:     110,
-	G.Block.GENERATOR: 265,
-	G.Block.REGEN:     170,
-	G.Block.SHIELD:    205,
-	G.Block.GUN:       205,      # по стволам и бьют: своя строка, а не общий потолок
-	G.Block.LASER:     190,
-	G.Block.ROCKET:    205,
-	G.Block.BLOCK3:    375,      # 3 клетки — и hp втрое от обычного блока
-	G.Block.WEDGE2:    345,
-	G.Block.ARMOR:     750,      # защитная пластина: держит втрое больше блока
+	G.Block.WHEEL:     285,
+	G.Block.BLOCK:     375,
+	G.Block.DRILL:     398,      # носовой блок: принимает удар первым, им же и работают
+	G.Block.COLLECTOR: 210,
+	G.Block.RECEIVER:    210,
+	G.Block.BELT:      165,
+	G.Block.PROCESSOR: 420,
+	G.Block.SELLER:    308,
+	G.Block.BATTERY:   255,
+	G.Block.SOLAR:     165,
+	G.Block.GENERATOR: 398,
+	G.Block.REGEN:     255,
+	G.Block.SHIELD:    308,
+	G.Block.GUN:       308,      # по стволам и бьют: своя строка, а не общий потолок
+	G.Block.LASER:     285,
+	G.Block.ROCKET:    308,
+	G.Block.BLOCK3:    563,      # 3 клетки — и hp втрое от обычного блока
+	G.Block.WEDGE2:    518,
+	G.Block.ARMOR:     1125,      # защитная пластина: держит втрое больше блока
 	# Bigger plates: toughness by area - 2 cells twice ARMOR, 4 four times, 9 nine.
-	G.Block.ARMOR2:    1500,
-	G.Block.ARMOR4:    3000,
-	G.Block.ARMOR9:    6750,
+	G.Block.ARMOR2:    2250,
+	G.Block.ARMOR4:    4500,
+	G.Block.ARMOR9:    10125,
 	# Половинка — тот же материал, но металла в ней меньше: две трети от блока.
-	G.Block.HALF_BLOCK:  170,
-	G.Block.HALF_BLOCK2: 345,
-	G.Block.WIRELESS_CHARGER: 170,
-	G.Block.MORTAR:      265,
-	G.Block.POUND_CANNON: 280,
-	G.Block.SHOTGUN:     220,
-	G.Block.SCRAPPER:    265,
-	G.Block.SMALL_DRILL: 155,
-	G.Block.BELT_SPLIT: 110,
-	G.Block.BELT_CROSS: 110,
-	G.Block.ROT_SUPPORT: 205,
-	G.Block.STORAGE:    265,
-	G.Block.AUTO_MINER: 330,
-	G.Block.FABRICATOR: 470,
+	G.Block.HALF_BLOCK:  255,
+	G.Block.HALF_BLOCK2: 518,
+	G.Block.WIRELESS_CHARGER: 255,
+	G.Block.MORTAR:      398,
+	G.Block.POUND_CANNON: 420,
+	G.Block.SHOTGUN:     330,
+	G.Block.SCRAPPER:    398,
+	G.Block.SMALL_DRILL: 233,
+	G.Block.BELT_SPLIT: 165,
+	G.Block.BELT_CROSS: 165,
+	G.Block.ROT_SUPPORT: 308,
+	G.Block.STORAGE:    398,
+	G.Block.AUTO_MINER: 495,
+	G.Block.FABRICATOR: 705,
 	# Marlit hull by volume, a little over the frame's 160 a cell: fewer seams in one big part.
-	G.Block.MARLIT_BLOCK:     1750,
-	G.Block.MARLIT_SLAB:      875,
-	G.Block.MARLIT_HALF:      875,
-	G.Block.MARLIT_HALF_SLAB: 440,
-	G.Block.MARLIT_LONG:      3500,
-	G.Block.MARLIT_LONG_HALF: 1750,
-	G.Block.MARLIT_GIRDER:    875,     # half the basic block's, as its entry says
-	G.Block.MARLIT_BREW_GIRDER: 1750,
-	G.Block.MARLIT_BRACKET:   750,     # small but strong
+	G.Block.MARLIT_BLOCK:     2625,
+	G.Block.MARLIT_SLAB:      1313,
+	G.Block.MARLIT_HALF:      1313,
+	G.Block.MARLIT_HALF_SLAB: 660,
+	G.Block.MARLIT_LONG:      5250,
+	G.Block.MARLIT_LONG_HALF: 2625,
+	G.Block.MARLIT_GIRDER:    1313,     # half the basic block's, as its entry says
+	G.Block.MARLIT_BREW_GIRDER: 2625,
+	G.Block.MARLIT_BRACKET:   1125,     # small but strong
 	# Plates by area, a little over Falsus's 480 a cell: thicker plate.
-	G.Block.MARLIT_ARMOR2:    1375,
-	G.Block.MARLIT_ARMOR4:    2750,
-	G.Block.MARLIT_ARMOR8:    5500,
-	G.Block.MARLIT_SOLAR:     1000,     # the housing is half a basic block, the lid armour
-	G.Block.MARLIT_REGEN:     875,
-	G.Block.MARLIT_WHEEL:     750,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
-	G.Block.MARLIT_SUPPORT:     1375,   # a casting: tougher than its eight cells of frame, short of the block
-	G.Block.MARLIT_ROT_SUPPORT: 1250,
+	G.Block.MARLIT_ARMOR2:    2063,
+	G.Block.MARLIT_ARMOR4:    4125,
+	G.Block.MARLIT_ARMOR8:    8250,
+	G.Block.MARLIT_SOLAR:     1500,     # the housing is half a basic block, the lid armour
+	G.Block.MARLIT_REGEN:     1313,
+	G.Block.MARLIT_WHEEL:     1125,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
+	G.Block.MARLIT_SUPPORT:     2063,   # a casting: tougher than its eight cells of frame, short of the block
+	G.Block.MARLIT_ROT_SUPPORT: 1875,
 	G.Block.MARLIT_CABIN:     2917,      # 2.5 Marlit blocks / 1.5, as the Falsus cabin
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
-	G.Block.MARLIT_GUN:       700,
-	G.Block.MARLIT_DRILL:     1850,     # the nose block, like the Falsus drill a little over its block
-	G.Block.MARLIT_LASER_DRILL: 1400,   # an emitter, not a ram: lighter built than the bit
-	G.Block.MARLIT_SAW:       900,      # half the cells
-	G.Block.MARLIT_LASER:     650,
-	G.Block.MARLIT_SHOTGUN:   750,
-	G.Block.MARLIT_CANNON:    850,
-	G.Block.MARLIT_MORTAR:    750,
-	G.Block.MARLIT_BATTERY:   1125,     # a battery's toughness, by its eight cells, less the open bays
-	G.Block.MARLIT_WIRELESS:  500,
-	G.Block.MARLIT_OCTO:      5875,    # 27 cells at the basic block's rate
+	G.Block.MARLIT_GUN:       1050,
+	G.Block.MARLIT_DRILL:     2775,     # the nose block, like the Falsus drill a little over its block
+	G.Block.MARLIT_LASER_DRILL: 2100,   # an emitter, not a ram: lighter built than the bit
+	G.Block.MARLIT_SAW:       1350,      # half the cells
+	G.Block.MARLIT_LASER:     975,
+	G.Block.MARLIT_SHOTGUN:   1125,
+	G.Block.MARLIT_CANNON:    1275,
+	G.Block.MARLIT_MORTAR:    1125,
+	G.Block.MARLIT_BATTERY:   1688,     # a battery's toughness, by its eight cells, less the open bays
+	G.Block.MARLIT_WIRELESS:  750,
+	G.Block.MARLIT_OCTO:      8813,    # 27 cells at the basic block's rate
 	# Aero and Stryx stubs (G.STUB_BASE): their Falsus base's row, Aero x0.7, Stryx x1.3.
 	G.Block.AERO_CABIN: 292,
-	G.Block.AERO_BLOCK: 175,
-	G.Block.AERO_BLOCK2: 98,
-	G.Block.AERO_BLOCK3: 262,
-	G.Block.AERO_HALF: 119,
-	G.Block.AERO_HALF2: 241,
-	G.Block.AERO_WEDGE: 241,
-	G.Block.AERO_ARMOR: 525,
-	G.Block.AERO_ARMOR2: 1050,
-	G.Block.AERO_ARMOR4: 2100,
-	G.Block.AERO_ARMOR9: 4725,
-	G.Block.AERO_SMALL_WHEEL: 98,
-	G.Block.AERO_WHEEL: 133,
-	G.Block.AERO_BIG_WHEEL: 98,
-	G.Block.AERO_GUN: 144,
-	G.Block.AERO_SHOTGUN: 154,
-	G.Block.AERO_LASER: 133,
-	G.Block.AERO_ROCKET: 144,
-	G.Block.AERO_CANNON: 196,
-	G.Block.AERO_MORTAR: 186,
-	G.Block.AERO_DRILL: 186,
-	G.Block.AERO_SOLAR: 77,
-	G.Block.AERO_BATTERY: 119,
-	G.Block.AERO_REGEN: 119,
-	G.Block.AERO_SHIELD: 144,
-	G.Block.AERO_WIRELESS: 119,
-	G.Block.AERO_SUPPORT: 98,
-	G.Block.AERO_ROT_SUPPORT: 144,
+	G.Block.AERO_BLOCK: 263,
+	G.Block.AERO_BLOCK2: 147,
+	G.Block.AERO_BLOCK3: 393,
+	G.Block.AERO_HALF: 179,
+	G.Block.AERO_HALF2: 362,
+	G.Block.AERO_WEDGE: 362,
+	G.Block.AERO_ARMOR: 788,
+	G.Block.AERO_ARMOR2: 1575,
+	G.Block.AERO_ARMOR4: 3150,
+	G.Block.AERO_ARMOR9: 7088,
+	G.Block.AERO_SMALL_WHEEL: 147,
+	G.Block.AERO_WHEEL: 200,
+	G.Block.AERO_BIG_WHEEL: 147,
+	G.Block.AERO_GUN: 216,
+	G.Block.AERO_SHOTGUN: 231,
+	G.Block.AERO_LASER: 200,
+	G.Block.AERO_ROCKET: 216,
+	G.Block.AERO_CANNON: 294,
+	G.Block.AERO_MORTAR: 279,
+	G.Block.AERO_DRILL: 279,
+	G.Block.AERO_SOLAR: 116,
+	G.Block.AERO_BATTERY: 179,
+	G.Block.AERO_REGEN: 179,
+	G.Block.AERO_SHIELD: 216,
+	G.Block.AERO_WIRELESS: 179,
+	G.Block.AERO_SUPPORT: 147,
+	G.Block.AERO_ROT_SUPPORT: 216,
 	G.Block.STRYX_CABIN: 542,
-	G.Block.STRYX_BLOCK: 325,
-	G.Block.STRYX_BLOCK2: 182,
-	G.Block.STRYX_BLOCK3: 488,
-	G.Block.STRYX_HALF: 221,
-	G.Block.STRYX_HALF2: 448,
-	G.Block.STRYX_WEDGE: 448,
-	G.Block.STRYX_ARMOR: 975,
-	G.Block.STRYX_ARMOR2: 1950,
-	G.Block.STRYX_ARMOR4: 3900,
-	G.Block.STRYX_ARMOR9: 8775,
-	G.Block.STRYX_SMALL_WHEEL: 182,
-	G.Block.STRYX_WHEEL: 247,
-	G.Block.STRYX_BIG_WHEEL: 182,
-	G.Block.STRYX_GUN: 266,
-	G.Block.STRYX_SHOTGUN: 286,
-	G.Block.STRYX_LASER: 247,
-	G.Block.STRYX_ROCKET: 266,
-	G.Block.STRYX_CANNON: 364,
-	G.Block.STRYX_MORTAR: 344,
-	G.Block.STRYX_DRILL: 344,
-	G.Block.STRYX_SOLAR: 143,
-	G.Block.STRYX_BATTERY: 221,
-	G.Block.STRYX_REGEN: 221,
-	G.Block.STRYX_SHIELD: 266,
-	G.Block.STRYX_WIRELESS: 221,
-	G.Block.STRYX_SUPPORT: 182,
-	G.Block.STRYX_ROT_SUPPORT: 266,
+	G.Block.STRYX_BLOCK: 488,
+	G.Block.STRYX_BLOCK2: 273,
+	G.Block.STRYX_BLOCK3: 732,
+	G.Block.STRYX_HALF: 332,
+	G.Block.STRYX_HALF2: 672,
+	G.Block.STRYX_WEDGE: 672,
+	G.Block.STRYX_ARMOR: 1463,
+	G.Block.STRYX_ARMOR2: 2925,
+	G.Block.STRYX_ARMOR4: 5850,
+	G.Block.STRYX_ARMOR9: 13163,
+	G.Block.STRYX_SMALL_WHEEL: 273,
+	G.Block.STRYX_WHEEL: 371,
+	G.Block.STRYX_BIG_WHEEL: 273,
+	G.Block.STRYX_GUN: 399,
+	G.Block.STRYX_SHOTGUN: 429,
+	G.Block.STRYX_LASER: 371,
+	G.Block.STRYX_ROCKET: 399,
+	G.Block.STRYX_CANNON: 546,
+	G.Block.STRYX_MORTAR: 516,
+	G.Block.STRYX_DRILL: 516,
+	G.Block.STRYX_SOLAR: 215,
+	G.Block.STRYX_BATTERY: 332,
+	G.Block.STRYX_REGEN: 332,
+	G.Block.STRYX_SHIELD: 399,
+	G.Block.STRYX_WIRELESS: 332,
+	G.Block.STRYX_SUPPORT: 273,
+	G.Block.STRYX_ROT_SUPPORT: 399,
 }
-const DEFAULT_HP := 140
+const DEFAULT_HP := 210
 
 # Вес блока в килограммах. Раньше массу машины составляли только колёса, из-за чего
 # постройка вообще не влияла на ходовые качества. Теперь каждый блок весит.

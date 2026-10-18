@@ -405,7 +405,8 @@ func _aim_current_step() -> void:
 # ── Наведение ────────────────────────────────────────────────────────────────
 # Цели-кнопки появляются не сразу (гараж инстансится при первом открытии), поэтому
 # отсутствие цели — не ошибка: просто ждём следующего кадра.
-func _aim_node(node: CanvasItem, text: String, double_tap: bool = false) -> void:
+func _aim_node(node: CanvasItem, text: String, double_tap: bool = false,
+		gate: int = TutorialGuide.Gate.TARGET) -> void:
 	if node == null or not is_instance_valid(node) or not node.is_visible_in_tree():
 		# ЧУЖОЙ ПУЗЫРЬ ГАСИМ ВСЕГДА, а не только если наводились сами. Смена шага сбрасывает
 		# _aimed в пустую строку, и по старому условию подсказка ПРОШЛОГО шага оставалась
@@ -420,7 +421,7 @@ func _aim_node(node: CanvasItem, text: String, double_tap: bool = false) -> void
 		return
 	_aimed = key
 	_set_ui_locked(false)
-	_guide.point_at_node(node, text, double_tap)
+	_guide.point_at_node(node, text, double_tap, gate)
 
 func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.TARGET) -> void:
 	var key := "%s|%s|%s" % [_step, getter.get_method(), text]
@@ -593,7 +594,10 @@ func _aim_arsenal() -> void:
 		elif _step == "tut_research_gun":
 			# THE NODE ITSELF, DOUBLE-TAPPED (tech_ui._make_tech_node researches on a quick second
 			# tap): the Research button sits at the scroll's bottom, under the dialogue strip.
-			_aim_node(_garage_node("tech_gun"), "Double-tap the Machine Gun — it costs 0 RP", true)
+			# NO SHADE OVER THE TREE (the player's call: "remove the dimming, leave the hints"): the
+			# finger and the line only, and the tree stays the player's to pan and read.
+			_aim_node(_garage_node("tech_gun"), "Double-tap the Machine Gun — it costs 0 RP", true,
+					TutorialGuide.Gate.OFF)
 		else:
 			var slot: Control = _garage_node("inv_gun")
 			if slot != null:

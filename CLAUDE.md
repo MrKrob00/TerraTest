@@ -165,7 +165,7 @@ project: read it before claiming how anything works.
   artist's NORMALS, WHICH ARE INVERTED (the x1's showing face carries +Y, into the plate): built
   with outward normals the big plates lit as the x1's opposite, black beside grey in one light.
   Measured: cells, mesh and collider span the same rectangle for all four, and a wall carrying all
-  four joins 40 of 40 through `buildable_subset`. Toughness and weight go by area (x9: 4320 hp,
+  four joins 40 of 40 through `buildable_subset`. Toughness and weight go by area (x9: 10125 hp,
   306 kg).
 - **THE COLLIDER'S POSITION IN A BLOCK SCENE IS A DRAWING FOR THE ARTIST, AND IT MUST BE DRAWN
   WHERE THE GAME PUTS IT.** `spawn_block` OVERWRITES that local position — only the SHAPE comes
@@ -954,7 +954,11 @@ project: read it before claiming how anything works.
   `G.FACTION_DAMAGE`). **AND THEN DOUBLED BACK** (the player's call: "raise the guns' damage twice"):
   gun 26, laser 86, shotgun pellet 22, heavy cannon 154, rocket blast 232, mortar shell 62; Marlit gun 42,
   laser 156, shotgun 26, cannon 308, mortar 92 - the numbers in the scripts and scenes, so the codex
-  reads them; the cabins kept their 1.5 division. Not the drill and not the blasts: they are no guns, and a vein's hit points
+  reads them; the cabins kept their 1.5 division. **AND EVERY BLOCK BUT THE CABINS TOOK x1.5 HIT POINTS**
+  (the player's call; `VehicleBlock.BLOCK_HP` and `DEFAULT_HP`, the numbers themselves so the codex reads
+  them): a Falsus block 375, a Marlit block 2625, the four cabins as they were - so a cabin is now about
+  one block of its faction, the heart rather than the bunker. Shares of `BLOCK_HP[BLOCK]` (the battery's
+  blast) grew with it. Not the drill and not the blasts: they are no guns, and a vein's hit points
   are tuned to the drill (a gun shooting a vein mines at half now). THE CABIN IS 2.5 BLOCKS OF ITS
   FACTION OVER 1.5 (the player's rules, the second with that halving): Falsus 417, Marlit 2917, Aero
   292, Stryx 542 (they were 625 / 4375 / 438 / 812). A weapon without its own row
@@ -2100,7 +2104,9 @@ project: read it before claiming how anything works.
   keeps it - after a death in a fight there must be something to answer with), so five more steps go
   to the TREE, research the Machine Gun (grade 1, 0 RP; research hands one into the inventory), open
   the INVENTORY, take the gun and bolt it onto the cabin's roof (`tutorial_director.ARSENAL`,
-  `GUN_CELL` outlined only then). Each closes from what the game shows (`_drive_arsenal`), so a player
+  `GUN_CELL` outlined only then). THE TREE IS NOT SHADED (the player's call: "remove the dimming,
+  leave the hints"): the research step points at the gun with `TutorialGuide.Gate.OFF` - the finger and
+  the line, no shade and no blocker, so the tree pans and reads; the other garage steps keep the hole. Each closes from what the game shows (`_drive_arsenal`), so a player
   ahead of it is let through; one who strays is pointed back (`_aim_arsenal`: the backpack while the
   garage is closed, the right tab while another is open, a Mechanic line once, `STRAY_GAP`). A save that
   finished the old tutorial counts the five as done (`Q._settle_arsenal`). THE
@@ -3575,7 +3581,8 @@ project: read it before claiming how anything works.
   "is it a drill / solar / carry base / banned on a station"; the lists the game reads directly
   (cabins, supports, batteries, wheels, the categories) name the stubs. A faction's own model
   replaces a stub's scene, and its `STUB_BASE` row goes. The enum is contiguous (keys are indexed
-  by value). Measured on the proving ground: Aero block 175 hp / 9 kg, Stryx block 325 / 12, Aero gun
+  by value). Measured on the proving ground: Aero block 175 hp / 9 kg, Stryx block 325 / 12 (263 / 488 since every
+  block's x1.5), Aero gun
   22 a shot, Stryx gun 31 (Falsus 26), Aero wheel 3120 power, a stub plate's cells the Falsus plate's.
   The style their OWN models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
   **THE FIRST OWN MODEL IS THE AERO LIGHT WHEEL** (`AERO_WHEEL`, "Aero Light Wheel"; `art/aero_wheels.py`,
