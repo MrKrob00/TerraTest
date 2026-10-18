@@ -2433,6 +2433,10 @@ project: read it before claiming how anything works.
 - Death hands the camera to the nearest own machine WITH A CABIN, and spawns a starter one (kit
   included) when there is none: `vehicles` also holds stations, and handing over to one of those
   read as "I respawned on my base" — no cabin, nothing to drive.
+- **A STUCK OR OVERTURNED MACHINE GETS A FINGER, NOT A CARD** (`stuck_watch.gd`, the player's call: "no
+  menu, only hints"): for `HINT_TIME` a TutorialGuide finger (its own, out of the `tutorial_guide`
+  group, `Gate.OFF`) points at BUILD (overturned, stuck - assembly lifts it clear - or wheels to
+  bolt on), at the garage (a wheel to buy), or at the in-game menu when only surrender is left.
 - **SURRENDER IS THE CABIN'S OWN DEATH** (`vehicle_body_3d.surrender`, through `game_menu.surrender` -
   the in-game menu and the stuck offer, both asking twice): the cabin goes through
   `VehicleBlock.destroy`, the door a cabin dies by, so its blast, the scatter, the death screen and the
