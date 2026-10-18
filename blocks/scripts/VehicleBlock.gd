@@ -845,7 +845,12 @@ func _refresh_hp_fx() -> void:
 	mat.set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
 	if healed <= 0.001:
 		return
-	mat.set_shader_parameter("heal_from", clampf(dmg + healed, 0.0, 1.0))
+	var from := clampf(dmg + healed, 0.0, 1.0)
+	# Repair comes in ticks: while the last green still burns its band is kept, so the freed
+	# cells add up rather than each tick showing a sliver that may hold no cell at all.
+	if is_instance_valid(_heal_tw) and _heal_tw.is_running():
+		from = maxf(from, float(mat.get_shader_parameter("heal_from")))
+	mat.set_shader_parameter("heal_from", from)
 	if is_instance_valid(_heal_tw):
 		_heal_tw.kill()                # реген чинит тиками: каждый следующий начинает отсчёт заново
 	_heal_tw = create_tween()

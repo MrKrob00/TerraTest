@@ -72,17 +72,11 @@ class Blocker extends Control:
 		return not hole.has_point(point)
 
 	func _draw() -> void:
-		# Затемняем всё, кроме дырки: четырьмя прямоугольниками вокруг неё, чтобы не
-		# заводить ни маску, ни шейдер ради одной подсветки.
-		var dim := Color(0.0, 0.0, 0.0, 0.45)
+		# NO DIMMING (the player's call): the blocker still swallows taps outside the hole, but
+		# draws only the outline round the target.
 		if hole.size == Vector2.ZERO:
-			draw_rect(Rect2(Vector2.ZERO, size), dim)
 			return
 		var h := hole
-		draw_rect(Rect2(0, 0, size.x, h.position.y), dim)
-		draw_rect(Rect2(0, h.end.y, size.x, size.y - h.end.y), dim)
-		draw_rect(Rect2(0, h.position.y, h.position.x, h.size.y), dim)
-		draw_rect(Rect2(h.end.x, h.position.y, size.x - h.end.x, h.size.y), dim)
 		# Обводка цели — чтобы взгляд шёл к ней, а не к пальцу.
 		var accent := Color(1.0, 0.72, 0.25, 0.9)
 		if round_hole:

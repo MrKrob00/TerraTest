@@ -782,7 +782,9 @@ project: read it before claiming how anything works.
   tower and its charging towers are marked with; killing the tower blows the guards' cells too
   (`quest_arcs._blow_tower_guards`, found by meta `tower_guard`, never by a list).
 - Block tinting goes through a separate shell: model materials are shared between instances.
-- DAMAGE IS SHOWN AS CELLS, NOT AS A LEVEL (`block_hp.gdshader`): a cell is broken or not, decided
+- DAMAGE IS SHOWN AS CELLS, NOT AS A LEVEL (`block_hp.gdshader`) - ONLY THE FREED CELLS GO GREEN (the
+  player's call: a block at 50% mended 10% keeps the red of 40%, the cells between green and fade;
+  `heal_from` holds its highest level while the green burns, so repair ticks add up): a cell is broken or not, decided
   by its own hash against the damage share, so a new hit ADDS glyphs to the ones already lit and
   never reshuffles them; only the symbol flips 0↔1. A repair greens the cells that stopped being
   broken and they fade over `HEAL_FADE`, and every repair tick flashes the still-lit ones green too,
@@ -2089,10 +2091,11 @@ project: read it before claiming how anything works.
   highest cabin or plain block with open sky above it, nearest the cabin's column; measured, it
   finds a place on all 72 ladder builds and the Marlit ones. **THE RADAR BRANCH IS ONE STAGE** (the
   player's call: a second carrier with a second radar was the same fight again for a block the
-  machine already had), run by `_carry_stage(key, block, preset)`, AND THE CARRIER IS THE TASK (the
-  player's rule): the stage closes once its carrier is dead AND one radar stands on the player's
-  machine - the taken one or one that was there already. It used to check the machine first: a
-  radar shot off some carrier earlier closed the stage at once (the player's report). Owned nowhere
+  machine already had), run by `_carry_stage(key, block, preset)`. THE BLOCK ON THE PLAYER'S
+  MACHINE CLOSES IT (the player's rule, again): a radar mounted on the driven machine ends the stage,
+  whether or not its carrier is dead - a carrier still alive stays as an ordinary machine
+  (`_release_machine`). The same for Salvage Run and its collector, and ITS GUARD IS A MINER WITH NO
+  GUNS (preset 90, the player's call), carrying the collector on top. Owned nowhere
   (`_owned_count`: every machine, the inventory, the hand), one is laid at the
   death spot; owned but not mounted, the marker goes away (`carrier_point` null). The salvage collector is
   claimed where the GUARD DIED (`_salvage_drop`), not at the cargo point: the guard hunts the player

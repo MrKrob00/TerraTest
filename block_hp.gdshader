@@ -112,11 +112,9 @@ void fragment() {
 
 	// Разнояркость по клеткам — иначе сетка читается как текстура, а не как россыпь символов.
 	float var_k = 0.72 + 0.28 * hash(cell + vec2(3.1, 8.7));
-	// EVERY REPAIR TICK FLASHES THE WHOLE DAMAGE GREEN (the player's call): a tick mends a few HP,
-	// so the band of cells it frees is a thin slice of the hash and often holds no cell at all -
-	// the green showed only when the last cells went out. The still-lit digits now turn green
-	// with heal_k and fade back to red; the freed ones go green and fade out.
-	vec3 lit_col = mix(color_hp, color_heal, heal_k);
-	ALBEDO = (lit ? lit_col : color_heal) * (1.4 * var_k);
+	// ONLY THE FREED CELLS GO GREEN (the player's call): a block at 50% mended by 10% keeps the
+	// red of 40% and the cells between turn green and fade out. A thin tick's band is widened on
+	// the GDScript side (heal_from holds the highest level while the green still burns).
+	ALBEDO = (lit ? color_hp : color_heal) * (1.4 * var_k);
 	ALPHA  = var_k * (lit ? 0.9 : heal_k);
 }

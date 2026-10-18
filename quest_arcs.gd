@@ -602,6 +602,11 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 	var p: Node3D = _player()
 	if p == null:
 		return false
+	# THE BLOCK ON THE PLAYER'S MACHINE CLOSES THE STAGE, carrier or not (the player's rule): a
+	# carrier still alive stays in the world as an ordinary machine.
+	if _count_block(block) >= 1:
+		_release_machine(_carrier.get(key))
+		return true
 	if not _carrier_spot.has(key):
 		var ang: float = randf() * TAU
 		var dist: float = _quest_dist()
@@ -939,6 +944,9 @@ func _salvage_1(q: Dictionary) -> void:
 	var p: Node3D = _player()
 	if p == null:
 		return
+	if _count_block(G.Block.COLLECTOR) >= 1:
+		Q.report(String(q["event"]), 1)       # already on the machine: the quest is done (stage 2)
+		return
 	if _salvage_point == null:
 		_salvage_point = _far_point(p)
 		return
@@ -985,15 +993,14 @@ func _salvage_spawn_guard() -> void:
 	if is_instance_valid(_salvage_guard) or not (_salvage_point is Vector3):
 		return
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	# THE GUARD CARRIES THE COLLECTOR, it does not lie beside it: cargo at the feet of the beaten
+	# THE GUARD IS A MINER, NO GUNS (the player's call; preset 90, `_apply_role` makes it dig). It
+	# CARRIES THE COLLECTOR, it does not lie beside it: cargo at the feet of the beaten
 	# reads as a reward for a tick-box, a block taken off a machine you had to strip as a trophy. On
 	# top of the build (blocks.carry), seen on the approach - the same rule as `_carrier_spawn`.
-	_salvage_guard = _spawn_hostile(sp, _salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1,
+	_salvage_guard = _spawn_hostile(sp, _salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 90, 1,
 		[G.Block.COLLECTOR])
 	if _salvage_guard == null:
 		return
-	if _salvage_guard.has_method("assign_target"):
-		_salvage_guard.assign_target(_player(), true)
 	# Смерть ЗАПОМИНАЕМ. Пустая ссылка сама по себе не означает победу: после загрузки она
 	# пуста всегда, и без этого флага квест проходился бы выходом в меню.
 	if _salvage_guard.has_signal("died"):
@@ -1009,6 +1016,13 @@ func _on_salvage_guard_died(_e = null) -> void:
 		_salvage_drop = _salvage_guard.global_position
 
 func _salvage_2(q: Dictionary) -> void:
+	# A collector on the player's machine closes the quest; a miner still alive stays as it is.
+	if _count_block(G.Block.COLLECTOR) >= 1:
+		_release_machine(_salvage_guard)
+		_salvage_guard = null
+		Q.report(String(q["event"]), 1)
+		_salvage_point = null
+		return
 	if is_instance_valid(_salvage_guard):
 		return
 	# A reload in this stage forgets the point (memory only), and with no point the guard was never
