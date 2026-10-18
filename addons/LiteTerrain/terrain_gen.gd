@@ -118,13 +118,24 @@ var _gen_ridge: FastNoiseLite
 var _gen_dune: FastNoiseLite
 var _gen_gorge: FastNoiseLite
 var _gen_ramp: FastNoiseLite
+## The biomes' numbers `raw_height_at` reads every point, taken once (`begin_sampling`).
+var _desert_flatten: float = 1.0
+var _dune_wavelength: float = 1.0
 
+## A TERM THAT IS AN EXACT ZERO IS NOT WORKED OUT. The ridge is weighed by the continental
+## smoothstep, the dunes and the salt by the sand's share (`land_sand`), the mountain's jitter by its
+## mask - and each of those is exactly 0.0 over most of the map (a smoothstep clamps), so the noise
+## read under it, five octaves for the ridge, went into a product with zero. The mountain's dome and
+## mask read ONE noise at one point (`TerrainBiomes.mountain_n`). Skipped terms are a finite value
+## times an exact zero, so the heights are the same to the bit (measured over every biome).
 func raw_height_at(wx: float, wz: float) -> float:
-	var base = (_gen_base.get_noise_2d(wx, wz) + 1.0) * 0.5
-	var continental:float = pow(base, gen_power)
-	var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(wx, wz)), _gen_ridge_sharp)
-	var mountain_mask = smoothstep(0.52, 0.78, continental)
-	var ridge_term = ridge * _gen_mtn_amount * mountain_mask
+	var base: float = (_gen_base.get_noise_2d(wx, wz) + 1.0) * 0.5
+	var continental: float = pow(base, gen_power)
+	var mountain_mask: float = smoothstep(0.52, 0.78, continental)
+	var ridge_term: float = 0.0
+	if mountain_mask > 0.0:
+		var ridge: float = pow(1.0 - absf(_gen_ridge.get_noise_2d(wx, wz)), _gen_ridge_sharp)
+		ridge_term = ridge * _gen_mtn_amount * mountain_mask
 	var wp := Vector2(wx, wz)
 	var b := _gen_biomes
 	# КАНЬОН БОЛЬШЕ НИЧЕГО НЕ ГАСИТ, и это следствие смены его модели. Пока он ЗАМЕЩАЛ высоту
@@ -136,26 +147,35 @@ func raw_height_at(wx: float, wz: float) -> float:
 	#
 	# Теперь каньон РЕЖЕТ уже готовую землю (см. carve_at): что бы здесь ни подняли,
 	# врез считается от этого же уровня. Гасить нечего, и ступеней от гашения нет.
-	var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
-	var mtn_mask := b.mountain_mask(wp, _cv_noise)
-	var mtn_dome := b.mountain_dome(wp, _cv_noise)
+	var sand_m := 1.0 - b.meadow_mask(wp)
+	var mtn_mask := 0.0
+	var mtn_dome := 0.0
+	if b.mountains_on:
+		var mn: float = b.mountain_n(wp)
+		mtn_mask = b.mountain_mask_n(mn)
+		mtn_dome = b.mountain_dome_n(mn)
 	var not_mtn := 1.0 - mtn_mask
 	var land_sand := sand_m * not_mtn
-	var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
-	var h = cont_biome + ridge_term * not_mtn
-	var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(wx, wz) * 3.5
-	var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
-	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(wx * 1.7, wz * 1.7) * 4.0 * mtn_mask
+	var cont_biome := continental * lerpf(1.0, _desert_flatten, land_sand)
+	var h: float = cont_biome + ridge_term * not_mtn
+	var dune := 0.0
+	if land_sand > 0.0:
+		var duneph := wx / _dune_wavelength + _gen_dune.get_noise_2d(wx, wz) * 3.5
+		dune = pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
+	var mtn_rise := 0.0
+	if mtn_mask > 0.0:        # the dome shares the mask's lower edge: zero together
+		mtn_rise = mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(wx * 1.7, wz * 1.7) * 4.0 * mtn_mask
 	var land: float = h * gen_amplitude + dune + mtn_rise
 	# THE SALT FLAT: the land eases down to a lake bed built from the SAME base noise read at a
 	# twentieth of its frequency - so it sits where the desert around it sits, and stays near flat
 	# across the whole patch. The mask's wide edge is the shore: a slope, not a step. No dunes,
 	# no ridges on it.
-	var salt: float = b.salt_raw(wp, _cv_noise) * land_sand     # = salt_mask, from the masks in hand
-	if salt > 0.0:
-		var lo: float = (_gen_base.get_noise_2d(wx * 0.05, wz * 0.05) + 1.0) * 0.5
-		var bed: float = pow(lo, gen_power) * b.desert_flatten * gen_amplitude
-		land = lerpf(land, bed, smoothstep(0.0, 1.0, salt))
+	if land_sand > 0.0:
+		var salt: float = b.salt_raw(wp) * land_sand     # = salt_mask, from the masks in hand
+		if salt > 0.0:
+			var lo: float = (_gen_base.get_noise_2d(wx * 0.05, wz * 0.05) + 1.0) * 0.5
+			var bed: float = pow(lo, gen_power) * _desert_flatten * gen_amplitude
+			land = lerpf(land, bed, smoothstep(0.0, 1.0, salt))
 	return land
 
 ## РОВНАЯ ЗЕМЛЯ ОДНИМ ФЛАГОМ. Нужна испытательному полигону: там измеряют машину, а не рельеф,
@@ -184,7 +204,12 @@ func height_at(wx: float, wz: float) -> float:
 ## чанками: шумы собираются один раз на главном потоке, дальше их только читают.
 func begin_sampling(b: TerrainBiomes) -> void:
 	_gen_biomes = b
+	_desert_flatten = b.desert_flatten
+	_dune_wavelength = b.dune_wavelength
 	prepare_sampling()
+	# The biome noise is a lazy static (`TerrainBiomes.cv_noise`): made here, on the main thread, or two
+	# worker threads asking first would both make it.
+	TerrainBiomes.cv_noise(Vector2.ZERO)
 
 ## СЕТКА n×n ОТ МИРОВОЙ ТОЧКИ С ШАГОМ step. step = 1 — чанк, step = 2ⁿ — слияние 2ⁿ×2ⁿ чанков
 ## в один меш того же размера. Считается синхронно: зовётся из задачи WorkerThreadPool, по одной
@@ -248,20 +273,20 @@ func carve_at(wx: float, wz: float, surface: float) -> float:
 	var wp := Vector2(wx, wz)
 	# One call, the SAME mask the shader colours with. A second copy of the formula lived here
 	# and missed `mask_offset`, so the cut landed where the canyon was not painted.
-	var hmask: float = b.canyon_mask(wp, _cv_noise)
+	var hmask: float = b.canyon_mask(wp)
 	if hmask <= 0.001:
 		return surface
 	# Mountain wins over canyon (shader order: desert/meadow -> canyon -> mountains on top).
 	# Damp the CUT by the mountain mask, never the mountain RISE by the canyon one: damping a
 	# rise leaves a step as tall as what it removed (0.75 of map height), while the cut is 0.3
 	# and fades out with hmask by itself.
-	hmask *= 1.0 - b.mountain_mask(wp, _cv_noise)
+	hmask *= 1.0 - b.mountain_mask(wp)
 	# ...and the salt flat over the canyon, the same way: a gorge through a lake bed is neither
-	hmask *= 1.0 - b.salt_mask(wp, _cv_noise)
+	hmask *= 1.0 - b.salt_mask(wp)
 	if hmask <= 0.001:
 		return surface
 	# mask_offset here too, or the butte hierarchy repeats on every seed.
-	var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
+	var bt := TerrainBiomes.cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
 	# MESA LAND CUT BY GORGES, not a pit and not a slab. The top is the LOCAL surface, and that
 	# is what keeps the region border from being a cliff: up there canyon_h equals surface, so
 	# the hmask blend moves nothing. Gorges are a minority of the area, and steps belong on the
@@ -290,9 +315,6 @@ func carve_at(wx: float, wz: float, surface: float) -> float:
 	var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, t - ti)
 	var canyon_h: float = floor_h + (ti + riser) * (span / steps)
 	return lerpf(surface, canyon_h, hmask)
-
-func _cv_noise(p: Vector2) -> float:
-	return TerrainBiomes.cv_noise(p)
 
 func prepare_sampling() -> void:
 	var gorge_noise := FastNoiseLite.new()

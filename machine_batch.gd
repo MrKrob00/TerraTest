@@ -11,6 +11,11 @@ extends Node3D
 # camera draws them, while everything that asks `visible` - occlusion, effects measuring a block
 # (BlockFX._local_aabb), leaving the machine - keeps working unchanged. A part leaving the machine
 # gets its layers back at once (child_exiting_tree), before anything else sees it.
+# A HIDDEN ORIGINAL DOES NOT FOLLOW ITS MACHINE IN THE RENDERING SERVER (`set_notify_transform`
+# off): a layers-0 instance is still a visible one to the engine, so every physics tick the machine
+# moved, every original was sent its new transform and moved in the scene's BVH - a hundred-odd per
+# machine, never drawn. Its node-side `global_transform`, which the batch and the effects read, stays
+# right; given back, it is sent its transform once (`_restore`).
 #
 # WHAT IS BATCHED: meshes that came with the block's SCENE (owner == block) - never anything a
 # script built (hp overlay, laser rings, shield dome, beams: owner is null), nothing under an Area3D
@@ -174,6 +179,10 @@ func _restore(mi) -> void:
 	var id: int = mi.get_instance_id()
 	if _hidden.has(id):
 		(mi as MeshInstance3D).layers = int(_hidden[id][1])
+		(mi as MeshInstance3D).set_notify_transform(true)
+		if (mi as MeshInstance3D).is_inside_tree():
+			RenderingServer.instance_set_transform((mi as MeshInstance3D).get_instance(),
+					(mi as MeshInstance3D).global_transform)
 		_hidden.erase(id)
 
 func _rebuild() -> void:
@@ -245,6 +254,7 @@ func _rebuild() -> void:
 				cullable = true
 			_hidden[mi.get_instance_id()] = [mi, mi.layers]
 			mi.layers = 0
+			mi.set_notify_transform(false)
 		var smmi: MultiMeshInstance3D = null
 		var cast: int = first.cast_shadow
 		if not moving.has(1):

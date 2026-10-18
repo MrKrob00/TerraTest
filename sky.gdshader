@@ -55,25 +55,39 @@ void sky() {
 		up = up * up * (3.0 - 2.0 * up);
 		vec3 col = mix(world_haze.rgb, mix(zenith_day, zenith_night, night), up);
 		col = mix(col, world_haze.rgb, 0.12 * (1.0 - night));   // the air is one air: a breath of it overhead too
-		// the horizon reddens toward the sun at dusk and dawn
-		vec2 hz = normalize(dir.xz + vec2(1e-4));
-		vec2 sz = normalize(sun.xz + vec2(1e-4));
-		float toward = max(dot(hz, sz), 0.0);
-		float low = pow(1.0 - dir.y, 5.0);
-		col = mix(col, sunset_glow, dusk * low * (0.35 + 0.65 * toward * toward));
-		col = mix(col, col * vec3(0.62, 0.55, 0.78), dusk * up * (1.0 - night));   // the zenith deepens
+		// THE DUSK, THE MOON AND THE STARS ARE BRANCHES ON UNIFORMS (`dusk` comes from the sun alone,
+		// `night` is exactly 0 by day - day_cycle's smoothstep): one side for the whole sky, so by day the
+		// stars' two hashes and sine, the moon and the dusk's two normalizations are not worked out per
+		// pixel to be multiplied by zero. Small powers are products (pow is a log and an exp a pixel).
+		if (dusk > 0.0) {
+			// the horizon reddens toward the sun at dusk and dawn
+			vec2 hz = normalize(dir.xz + vec2(1e-4));
+			vec2 sz = normalize(sun.xz + vec2(1e-4));
+			float toward = max(dot(hz, sz), 0.0);
+			float y1 = 1.0 - dir.y;
+			float y2 = y1 * y1;
+			float low = y2 * y2 * y1;
+			col = mix(col, sunset_glow, dusk * low * (0.35 + 0.65 * toward * toward));
+			col = mix(col, col * vec3(0.62, 0.55, 0.78), dusk * up * (1.0 - night));   // the zenith deepens
+		}
 
 		// the sun and its glow; at night the moon
 		float ds = max(dot(dir, sun), 0.0);
-		col += sun_color * (smoothstep(0.9993, 0.9996, ds) * 6.0 + pow(ds, 300.0) * 0.8 + pow(ds, 12.0) * 0.12 + pow(ds, 4.0) * 0.18) * day;   // the last: a wide warm glare
-		vec3 moon = normalize(moon_dir);
-		float dm = max(dot(dir, moon), 0.0);
-		col += moon_color * (smoothstep(0.99955, 0.9998, dm) * 1.6 + pow(dm, 200.0) * 0.15) * night;
+		float ds2 = ds * ds;
+		float ds4 = ds2 * ds2;
+		float ds6 = ds4 * ds2;
+		col += sun_color * (smoothstep(0.9993, 0.9996, ds) * 6.0 + pow(ds, 300.0) * 0.8 + ds6 * ds6 * 0.12 + ds4 * 0.18) * day;   // the last: a wide warm glare
+		float star = 0.0;
+		if (night > 0.0) {
+			vec3 moon = normalize(moon_dir);
+			float dm = max(dot(dir, moon), 0.0);
+			col += moon_color * (smoothstep(0.99955, 0.9998, dm) * 1.6 + pow(dm, 200.0) * 0.15) * night;
 
-		// stars, under the clouds
-		vec3 cell = floor(dir * 220.0);
-		float star = step(0.9965, hash3(cell)) * night * smoothstep(0.05, 0.3, dir.y);
-		star *= 0.6 + 0.4 * sin(TIME * 2.0 + hash3(cell + 7.0) * 40.0);
+			// stars, under the clouds
+			vec3 cell = floor(dir * 220.0);
+			star = step(0.9965, hash3(cell)) * night * smoothstep(0.05, 0.3, dir.y);
+			star *= 0.6 + 0.4 * sin(TIME * 2.0 + hash3(cell + 7.0) * 40.0);
+		}
 
 		// clouds: one plane over the world, seen through the dome
 		vec2 p = dir.xz / (dir.y + 0.12) * cloud_scale + cloud_wind * TIME;
@@ -85,7 +99,7 @@ void sky() {
 		float thick = smoothstep(th, th + 0.35, dens);
 		vec3 lit = mix(vec3(1.0), sunset_glow * 1.15 + vec3(0.15), dusk * 0.8);
 		vec3 cloud = mix(lit, lit * 0.62, thick);
-		cloud += sun_color * pow(ds, 6.0) * 0.35 * (1.0 - thick) * day;       // a silver edge toward the sun
+		cloud += sun_color * ds6 * 0.35 * (1.0 - thick) * day;       // a silver edge toward the sun
 		cloud = mix(cloud, vec3(0.1, 0.12, 0.2), night * 0.85);
 		cloud = mix(cloud, world_haze.rgb, (1.0 - up) * 0.55);   // low clouds sink into the haze
 		col = mix(col + vec3(star), cloud, c * mix(0.95, 0.7, night));

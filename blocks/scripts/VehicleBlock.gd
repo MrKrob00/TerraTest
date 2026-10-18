@@ -505,14 +505,19 @@ func _ready() -> void:
 ## it is taken out again right after, here; a block leaving the machine (torn off, taken, scattered)
 ## enters its new parent's world with its body, as before. What looks for a mounted block asks the
 ## machine's shapes and reads the tag: `hit_node`, `of_hit`, `query_hits`, `MACHINE_LAYER`.
+## NOR DOES IT FOLLOW THE MACHINE (`set_notify_transform` off while mounted): out of the space, its body
+## was still sent the block's new transform every tick the machine moved. Entering a world sends it
+## the transform anyway (CollisionObject3D), so a block torn off starts where it stood.
 func _notification(what: int) -> void:
 	# A stub block of a faction with no models yet takes its tint the moment the scene is built, before
 	# it enters any tree - so the machine's batch and the loose batch collect the tinted parts.
 	if what == NOTIFICATION_SCENE_INSTANTIATED and has_meta("stub_faction"):
 		STUB_TINT.apply(self, String(get_meta("stub_faction")))
 	if what == NOTIFICATION_ENTER_WORLD or what == NOTIFICATION_ENABLED:
-		if is_mounted():
+		var on := is_mounted()
+		if on:
 			PhysicsServer3D.body_set_space(get_rid(), RID())
+		set_notify_transform(not on)
 
 const STUB_TINT := preload("res://blocks/scripts/stub_tint.gd")
 

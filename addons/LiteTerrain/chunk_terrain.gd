@@ -352,7 +352,6 @@ func plain_near(from: Vector3, reach: float) -> Variant:
 ## least bad point seen.
 func _plain_search(from: Vector3, reach: float) -> Array:
 	var b := _biomes()
-	var nz: Callable = b.noise
 	var best := from
 	var best_score := INF
 	var r := 0.0
@@ -361,7 +360,7 @@ func _plain_search(from: Vector3, reach: float) -> Array:
 		for i in n:
 			var a := TAU * float(i) / float(n)
 			var p := Vector2(from.x + cos(a) * r, from.z + sin(a) * r)
-			var bad: float = b.canyon_mask(p, nz) + b.mountain_mask(p, nz)
+			var bad: float = b.canyon_mask(p) + b.mountain_mask(p)
 			if bad > PLAIN_MASK and bad >= best_score:
 				continue
 			var lo := INF
@@ -926,7 +925,7 @@ func _enqueue_under(lod: int, gx: int, gz: int) -> void:
 				continue
 			var ck := _key(cl, cx, cz)
 			if _leaf_set.has(ck):
-				if not _live.has(ck) and not _staged.has(ck):
+				if not _live.has(ck) and not _staged.has(ck) and not _queued_fresh(ck):
 					_enqueue_mesh(cl, cx, cz, _signature(cl, cx, cz))
 			elif cl > 0:
 				_enqueue_under(cl, cx, cz)
@@ -1224,6 +1223,13 @@ func _pack_planes() -> void:
 const JOB_MESH := 0
 const JOB_COLL := 1
 
+## A QUEUED JOB SIGNED FOR THESE LEAVES, OR ONE THE POOL HAS TAKEN, IS NOT SIGNED AGAIN: a signature
+## reads the leaf set and nothing else (`_level_of`), and the LOD tick asked one for every queued node
+## every tick - 40-50 calls a node over a backlog of hundreds - to write the same number back.
+func _queued_fresh(key: int) -> bool:
+	var q = _queued.get(key)
+	return q is Dictionary and (q.get("started", false) or int(q.get("sg", -1)) == _leaf_gen)
+
 func _enqueue_mesh(lod: int, gx: int, gz: int, sig: int) -> void:
 	var key := _key(lod, gx, gz)
 	var q = _queued.get(key)
@@ -1232,13 +1238,14 @@ func _enqueue_mesh(lod: int, gx: int, gz: int, sig: int) -> void:
 		# read by a worker thread and is left alone; it is re-asked when it lands.
 		if q is Dictionary and not q.get("started", false):
 			q["sig"] = sig
+			q["sg"] = _leaf_gen
 		return
 	var span := float(CHUNK << lod)
 	var job := {
-		"kind": JOB_MESH, "key": key, "lod": lod, "gx": gx, "gz": gz, "sig": sig,
+		"kind": JOB_MESH, "key": key, "lod": lod, "gx": gx, "gz": gz, "sig": sig, "sg": _leaf_gen,
 		"edits": _edits_in(gx * span, gz * span, span),
 		# Середина узла — по ней очередь потом сортируется от камеры (см. _sort_queues).
-		"cx": gx * span + span * 0.5, "cz": gz * span + span * 0.5, "d2": 0.0,
+		"cx": gx * span + span * 0.5, "cz": gz * span + span * 0.5,
 	}
 	_queued[key] = job
 	_jobs.append(job)
@@ -1251,24 +1258,34 @@ func _enqueue_coll(bcx: int, bcz: int) -> void:
 	_col_jobs.append({
 		"kind": JOB_COLL, "key": key, "lod": 0, "gx": bcx, "gz": bcz, "sig": 0,
 		"edits": _edits_in(bcx * float(CHUNK), bcz * float(CHUNK), float(CHUNK)),
-		"cx": bcx * CHUNK + CHUNK * 0.5, "cz": bcz * CHUNK + CHUNK * 0.5, "d2": 0.0,
+		"cx": bcx * CHUNK + CHUNK * 0.5, "cz": bcz * CHUNK + CHUNK * 0.5,
 	})
 
 ## БЛИЖНЕЕ СЧИТАЕТСЯ ПЕРВЫМ. Очередь набирается обходом дерева, то есть в порядке клеток верхнего
 ## уровня, и без сортировки узел в километре мог родиться раньше того, на который игрок смотрит:
 ## земля вокруг проявлялась кусками откуда попало.
-func _sort_queues(cam: Vector3) -> void:
+## SORTED WHEN A BATCH IS TAKEN, NOT AT EVERY LOD TICK, AND NATIVELY (`_job_tick`): only the head is
+## ever read, and only at a launch, while the tick runs every one or two frames with the camera
+## turning - and a GDScript comparator over a backlog of hundreds was thousands of calls a tick. The
+## key is the distance in whole square metres over the job's index, one PackedInt64Array sort.
+func _sort_queues(at: Vector3) -> void:
 	for q in [_col_jobs, _jobs]:
-		if q.size() < 2:
+		var n: int = q.size()
+		if n < 2:
 			continue
-		for j in q:
-			var dx: float = j["cx"] - cam.x
-			var dz: float = j["cz"] - cam.z
-			j["d2"] = dx * dx + dz * dz
-		q.sort_custom(_nearer)
-
-func _nearer(a: Dictionary, b: Dictionary) -> bool:
-	return a["d2"] < b["d2"]
+		var keys := PackedInt64Array()
+		keys.resize(n)
+		for i in n:
+			var j: Dictionary = q[i]
+			var dx: float = float(j["cx"]) - at.x
+			var dz: float = float(j["cz"]) - at.z
+			keys[i] = (int(dx * dx + dz * dz) << 21) | i
+		keys.sort()
+		var sorted: Array = []
+		sorted.resize(n)
+		for i in n:
+			sorted[i] = q[keys[i] & 0x1FFFFF]
+		q.assign(sorted)
 
 ## Один заход пула за раз: задания пишут в _out по своему номеру, а второй заход переписал бы
 ## и массив, и поля под первым.
@@ -1290,6 +1307,8 @@ func _job_tick() -> void:
 		return
 	if _gen == null or (_jobs.is_empty() and _col_jobs.is_empty()):
 		return
+	if _holding or _sel_local.x < 1e8:
+		_sort_queues(_hold if _holding else _sel_local)
 	# Сначала коллизия, целиком: её очередь короткая (тайлы вокруг тел), а ждать её нельзя.
 	_batch = _col_jobs.slice(0, BUILD_BATCH)
 	_col_jobs = _col_jobs.slice(_batch.size())
@@ -1701,7 +1720,6 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 	if h.size() != APRON * APRON:
 		return []
 	var b := _biomes()
-	var nz_cb: Callable = b.noise
 	var vh := PackedFloat32Array()
 	vh.resize(VERTS * VERTS)
 	for j in VERTS:
@@ -1758,7 +1776,7 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 			# На полигоне масок не спрашиваем вовсе: там один биом по определению, а три маски на
 			# вершину — это ровно та работа, ради отсутствия которой земля и сделана ровной.
 			cols[vi] = (Color(EDGE_STEP * edge, FLAT_COLOR.g, FLAT_COLOR.b, FLAT_COLOR.a)
-					if flat_ground else _biome_colour(b, wp, nz_cb, edge))
+					if flat_ground else _biome_colour(b, wp, edge))
 
 	var idx := PackedInt32Array()
 	idx.resize(CHUNK * CHUNK * 6)
@@ -2162,26 +2180,64 @@ func collision_stats() -> Vector2i:
 ## (каньон, луг, горы) в мировой точке — те же маски, что запечены в вершины.
 func biome_at(world_pos: Vector3) -> Vector3:
 	var b := _biomes()
-	var nz_cb: Callable = b.noise
 	var p: Vector3 = global_transform.affine_inverse() * world_pos
 	var wp := Vector2(p.x, p.z)
-	var c := _biome_colour(b, wp, nz_cb, 0)
+	var c := _biome_colour(b, wp, 0)
 	return Vector3(c.g, c.b, c.a)
 
 ## THE VERTEX'S BIOMES, one door for the bake and for `biome_at`: r the border code and the salt
 ## flat (EDGE_STEP / SALT_SPAN), g canyon, b meadow, a mountain. THE SALT FLAT WINS OVER THE CANYON
 ## in colour as it does in the landform (terrain_gen.carve_at): the canyon's mask is taken by it, or
 ## a lake bed under a canyon mask was painted terracotta from shore to shore.
-func _biome_colour(b: TerrainBiomes, wp: Vector2, nz_cb: Callable, edge: int) -> Color:
-	var salt: float = b.salt_mask(wp, nz_cb)
+func _biome_colour(b: TerrainBiomes, wp: Vector2, edge: int) -> Color:
+	var salt: float = b.salt_mask(wp)
 	return Color(EDGE_STEP * edge + SALT_SPAN * salt,
-			b.canyon_mask(wp, nz_cb) * (1.0 - salt), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
+			b.canyon_mask(wp) * (1.0 - salt), b.meadow_mask(wp), b.mountain_mask(wp))
 
 ## 0..1: a salt flat at this world point - the mask baked into COLOR.r.
 func salt_at(world_pos: Vector3) -> float:
 	var b := _biomes()
 	var p: Vector3 = global_transform.affine_inverse() * world_pos
-	return b.salt_mask(Vector2(p.x, p.z), b.noise)
+	return b.salt_mask(Vector2(p.x, p.z))
+
+## ── THE GROUND FOR A WORKER THREAD ─────────────────────────────────────────
+## What a task off the main thread may read to know the ground: the generator (it only reads once
+## `begin_sampling` is behind it - the chunk builds run on it), the edits as they stand (the list is
+## REPLACED on every edit, never changed in place, so the one handed over stays what it was) and the
+## biomes. `_memo` and `_hc` belong to the main thread and are never read: a height here is
+## `_memo_h`'s miss path, the function the chunks are built from. Asked on the main thread; empty with
+## no generator or a moved map (the callers hand world points as the map's own cells). The caller
+## keeps the generator alive by waiting for its task before the map leaves the tree.
+func thread_ground() -> Dictionary:
+	if _gen == null or global_transform != Transform3D.IDENTITY:
+		return {}
+	return {"gen": _gen, "edits": _flat_edits, "biomes": _biomes()}
+
+## `cell_height` for a worker (`thread_ground`).
+func thread_cell_height(g: Dictionary, cx: int, cz: int) -> float:
+	var x := float(cx)
+	var z := float(cz)
+	return _edit_h((g["gen"] as LiteTerrainGen).height_at(x, z), x, z, g["edits"])
+
+## `terrain_height_at` for a worker: the same bilinear patch over the same four nodes.
+func thread_height_at(g: Dictionary, wx: float, wz: float) -> float:
+	var x0 := int(floor(wx))
+	var z0 := int(floor(wz))
+	var tx: float = wx - float(x0)
+	var tz: float = wz - float(z0)
+	return lerpf(lerpf(thread_cell_height(g, x0, z0), thread_cell_height(g, x0 + 1, z0), tx),
+			lerpf(thread_cell_height(g, x0, z0 + 1), thread_cell_height(g, x0 + 1, z0 + 1), tx), tz)
+
+## `biome_at` for a worker: (canyon, meadow, mountain).
+func thread_biome(g: Dictionary, wx: float, wz: float) -> Vector3:
+	var b: TerrainBiomes = g["biomes"]
+	var c := _biome_colour(b, Vector2(wx, wz), 0)
+	return Vector3(c.g, c.b, c.a)
+
+## `salt_at` for a worker.
+func thread_salt(g: Dictionary, wx: float, wz: float) -> float:
+	var b: TerrainBiomes = g["biomes"]
+	return b.salt_mask(Vector2(wx, wz))
 
 func _get_material() -> Material:
 	if surface_material != null:
@@ -2589,7 +2645,8 @@ func _ground_tick(delta: float) -> void:
 			var l := _key_lod(key)
 			var gx := _key_gx(key)
 			var gz := _key_gz(key)
-			_enqueue_mesh(l, gx, gz, _signature(l, gx, gz))
+			if not _queued_fresh(key):
+				_enqueue_mesh(l, gx, gz, _signature(l, gx, gz))
 			var anc := _drawn_ancestor(l, gx, gz)
 			if anc != -1 and not _leaf_set.has(anc) and not split_seen.has(anc):
 				split_seen[anc] = true
@@ -2632,7 +2689,6 @@ func _ground_tick(delta: float) -> void:
 	_retire(now)
 	_held_dirty = true
 	_hlod_dirty = true
-	_sort_queues(_hold if _holding else cam_local)
 	_tick_ep = _cover_ep
 
 ## УШЕДШЕЕ ИЗ КАДРА ПРЯЧЕМ, А НЕ ВЫБРАСЫВАЕМ. Поворот камеры меняет половину видимого набора, и

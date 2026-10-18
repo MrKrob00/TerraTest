@@ -83,12 +83,11 @@ func _biome_at(wx: float, wz: float) -> int:
 	if _bio == null:
 		return ANY
 	var wp := Vector2(wx, wz)
-	var nz: Callable = _bio.noise
-	if _bio.mountain_mask(wp, nz) > 0.5:
+	if _bio.mountain_mask(wp) > 0.5:
 		return SNOW
-	if _bio.canyon_mask(wp, nz) > 0.5:
+	if _bio.canyon_mask(wp) > 0.5:
 		return CANYON
-	return GRASS if _bio.meadow_mask(wp, nz) > 0.5 else SAND
+	return GRASS if _bio.meadow_mask(wp) > 0.5 else SAND
 
 # ── Расстановка: для каждого набора набираем count точек в его биоме ───────────
 ## ПРОПЫ РАСКЛАДЫВАЮТСЯ ВОКРУГ ИГРОКА, А НЕ ПО ВСЕЙ КАРТЕ. В мире без края «вся карта» это не

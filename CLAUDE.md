@@ -76,7 +76,7 @@ project: read it before claiming how anything works.
     was four cells and 35 kg for exactly the output of one cell — not a choice, a mistake waiting
     to be made.
 16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
-    too (`TerrainBiomes.cv_noise`, handed to the masks as `biomes.noise`). A second copy of the
+    too (`TerrainBiomes.cv_noise`, which every mask reads itself - no Callable). A second copy of the
     formula diverged once and moved a whole region. THAT NOISE IS NATIVE (`FastNoiseLite`,
     `TYPE_VALUE`): it used to be eight lines of GDScript hashing, and those eight lines WERE the
     world's loading time — 17.3 us a call against 1.6 native, and three of them per mask, five
@@ -583,7 +583,8 @@ project: read it before claiming how anything works.
   `DEPOSIT_FOREST_MAX`) whose metal is decided ONCE for the deposit (`_metal_for` by the biome there,
   `WILD_CHANCE` a random one) with 3-5 veins round it, `DEPOSIT_RICH` more in the canyon and on the
   mountains. A member past its region's edge is dropped (spacing is checked only inside a region),
-  and all the rng is drawn when the job is made, so slicing (`REGION_SLICE_USEC`) changes nothing.
+  and all the rng is drawn when the job is made, so which thread lays a region, and when, changes
+  nothing.
   THE FIRST NUMBERS GAVE 13 TREES A REGION and read as "few groves, nothing changed" (the player);
   now 14 grove tries of 10-28 trees over a cut of -0.05, and 6 lone trees. Measured on the booted
   world (seed 424242, 25 regions): 58 trees a region on average (14-107: forest and clearing) and 19
@@ -651,13 +652,27 @@ project: read it before claiming how anything works.
   is its farthest VERTEX from the trunk's axis, not the bounding box's corner, which is up to 1.41
   times that and left every tree small in its tile. A felled tree (custom G under a half) gets no
   card; a tree model changed means the bake re-run. THE DATA REACHES TWO REGIONS OUT (`REGION_FAR`:
-  one ring guaranteed only 256 m), and the OUTER RING IS BUILT A SLICE A FRAME (`_region_step`,
-  `REGION_SLICE_USEC` 1.5 ms): a region that far costs 127-158 ms on the debug build against 8 ms for
-  one under built ground, its heights being new; one region's rng draws in one order however the work
-  is cut, so the layout is the same, and a region that comes inside `REGION_KEEP` half-built is
-  finished on the spot. Measured on the booted world: the ring filled in ~5 s, 23-27 cards in the band
-  ahead, the frame the same with and without them (alternated on the real driver), the streaming pass
-  1.3 -> 2.2 ms a call over 297 -> 759 records.
+  one ring guaranteed only 256 m). Measured on the booted world: 23-27 cards in the band ahead, the
+  frame the same with and without them (alternated on the real driver), the streaming pass 1.3 -> 2.2
+  ms a call over 297 -> 759 records.
+- **A VEIN REGION IS LAID ON A WORKER THREAD** (`resource_nodes._region_work`, one task at a time,
+  nearest first, HIGH priority: a low-priority one waits behind the terrain's whole batch). A region
+  costs 127-158 ms on the debug build where the ground is new to the terrain - every candidate asks
+  for its height, its slope and its biome - and it ran on the main thread a 1.5 ms slice a frame (the
+  budget was checked between candidates, so 1.5-4.5 ms) the whole time a ring filled, which is the
+  whole time the player drives, while a region that came inside `REGION_KEEP` half-built was finished
+  on the spot at the crossing. The task reads the terrain's GENERATOR and nothing the main thread
+  owns (`ChunkTerrain.thread_ground` -> `thread_height_at` / `thread_cell_height` / `thread_biome` /
+  `thread_salt`: never `_memo` or `_hc`) - the very function a built chunk's heights come from - and
+  everything else it needs is taken on the main thread as it starts (`_region_snap`: this node's
+  frame, the debug switches). A REGION IN REACH IS NEVER LATE (`_lay_now`): the one in flight is
+  waited for, any other is laid on the spot by the same function, and several at once (the first ring
+  of a session, a respawn) go to the pool together. Measured on the booted world, seeds 4242 and
+  424242: the 25 regions' records IDENTICAL TO THE BYTE to the old code's (2070 and 1477 - positions
+  to the millimetre, metal, tree, scene); the outer ring laid within seconds of boot against 76-91 s
+  of slices on the debug build; driving at 20 m/s (three runs a side) the veins' main-thread work 5.3-7.5 -> 0.5-0.6 ms a
+  frame (the crossings were 2.7-4.8 ms of it, the slices 2.2-2.3; what is left is the streaming pass)
+  and the frame rate 16.5 -> 18.9 fps.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
@@ -1554,14 +1569,23 @@ project: read it before claiming how anything works.
   cluster. Measured on the real driver, the same view: draw calls 149 -> 104 at 1400 m, 185 -> 138 at
   10 km, primitives +12% (a cluster draws its members off the frame too); on llvmpipe the frame is
   the same within noise, so the phone decides - which is why it is a setting.
-- A VEIN CANDIDATE'S SLOPE IS READ ON THE GRID'S NODES (`resource_nodes._slope_at` through
-  `ChunkTerrain.cell_height`): four bilinear heights were sixteen corner reads, each a fresh
-  generator call far from the player - the vein ring's whole main-thread cost. Measured: main-thread
+- A VEIN CANDIDATE'S SLOPE IS READ ON THE GRID'S NODES (`resource_nodes._slope_work` through
+  `ChunkTerrain.thread_cell_height` on the region's worker; `_slope_at` for a replant): four bilinear
+  heights were sixteen corner reads, each a fresh generator call far from the player. Measured: main-thread
   `raw_height_at` 217k -> 101k, the far ring filled in ~20 s against ~25, all 1343 seeded veins in the
   same places.
 - THE COST OF THE WORLD IS `height_at`, AND IT IS MEASURABLE. 124 us a point × 441 points a chunk
   × 25 chunks is the 1.1 s starting ring; before the noise went native it was 391 us and 3.7 s.
   Anything that claims to speed up loading has to move that number — or it is moving nothing.
+  **A TERM THAT IS AN EXACT ZERO IS NOT WORKED OUT** (`terrain_gen.raw_height_at`): the ridge is
+  weighed by the continental smoothstep, the dunes and the salt by the sand's share, the mountain's
+  jitter by its mask, and each is exactly 0.0 over most of the map (a smoothstep clamps) - the noise
+  under it, five octaves for the ridge, went into a product with zero. The mountain's mask and dome
+  read ONE noise (`TerrainBiomes.mountain_n` / `mountain_mask_n` / `mountain_dome_n`), and the masks
+  read `cv_noise` themselves instead of through a Callable and a wrapper frame each. Measured on the
+  optimize=none build, the old generator against the new over 6000 random points on each of four
+  seeds: raw heights and `height_at` (the canyon's cut included) IDENTICAL TO THE BIT, a raw height
+  29-32 -> 16-19 us.
 - A HEIGHT ASKED AT RUN TIME IS READ FROM THE BUILT CHUNK FIRST (`ChunkTerrain._memo_h`): a cell a
   level-0 chunk already holds (`_hc`, the heights its mesh and collision tile were cut from, edits
   included) is read from it, and only a cell no such chunk covers goes to the generator - ~364 us a
@@ -1633,8 +1657,11 @@ project: read it before claiming how anything works.
   THE BUDGET: a tile is what the machine drives on and cannot wait a frame; a mesh is what it
   looks at and can. During loading the budget is off entirely — the screen is behind the fade,
   there is nothing to smooth, and throughput is what matters.
-- NEAREST FIRST. Both queues are sorted by distance to
-  the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
+- NEAREST FIRST. Both queues are sorted by distance to the camera WHEN A BATCH IS TAKEN
+  (`_job_tick`, one native PackedInt64Array sort; it was a GDScript comparator over the whole backlog
+  every LOD tick), and a queued job signed for the current leaves is not signed again
+  (`_queued_fresh`: a signature reads the leaf set only). Measured driving at 20 m/s, three runs a
+  side: the chunk queue 3.1-3.3 -> 2.7-2.9, the worst frame 29-65 -> 33-37 ms; without that the order was the tree walk, so a node a kilometre away
   could be built before the one being looked at. Coming back is cheap only while the heights are
   still cached (`HC_CAP`): rebuilding a mesh from them is vertices and colour, computing them again
   is four times that from nothing. WITHIN `keep_radius` (320 m) nothing is dropped at all, by time
@@ -1709,6 +1736,19 @@ project: read it before claiming how anything works.
   same as before. The pass is ~1.5 ms a frame there against a LOD tick of ~13 (`terrain_hold`).
 - Generation and rebuilds are threaded (`WorkerThreadPool`, one task per row or chunk): a thread
   writes only its own slice, reads only immutable data, never touches the tree.
+- **THE POOL GIVES LOW-PRIORITY WORK HALF ITS THREADS** (project.godot
+  `threading/worker_pool/low_priority_thread_ratio` 0.5). The engine's default is 0.3, i.e.
+  `clamp(cores x 0.3, 1, cores - 1)`: ONE thread on four cores, two on an eight-core phone - and every
+  task the game posts is low priority, and a group task's first worker takes every element while the
+  group's other tasks wait in the low-priority queue (`core/object/worker_thread_pool.cpp`). So a
+  24-chunk batch was computed on one thread, and the ground-shade march, the HLOD merges and the
+  shield's seam solve queued behind it. Measured on the 4-core box, three runs a side, 0.3 / 0.5 /
+  0.75 (six boots a side): terrain ready 17.1 / 13.7 / 12.4 s, the world ready 20.2 / 16.6 / 15.4 s;
+  driving at 20 m/s the chunk queue 9.7 / 4.1 / 3.2 and the level changes let go by `HOLD_MAX_MS`
+  47 / 16 / 12 in 30 s; the frame the same. 0.5, not 0.75: Jolt's jobs run high priority
+  on the same threads, and 0.75 leaves them one on a four-core phone. THE BIOME NOISE IS MADE ON THE
+  MAIN THREAD (`LiteTerrainGen.begin_sampling` asks `TerrainBiomes.cv_noise` once): a lazy static,
+  and two workers asking first would both make it.
 - **THE GROUND'S DETAIL IS ONE TEXTURE OF FOUR MASKS, IN THE ONE FETCH THE OLD TILE SPENT**
   (`art/ground_detail.py` -> `addons/LiteTerrain/ground_detail.png`, set by
   `TerrainBiomes.apply_to_material`; the player's call, after TerraTech's ground): R cracked earth
@@ -2939,6 +2979,12 @@ project: read it before claiming how anything works.
   sky ambient or sky reflections, `drivers/gles3/rasterizer_scene_gles3.cpp`). Two fetches of one
   256 px tileable texture make the clouds (R bodies, G detail eroding and shading them), a hash
   makes the stars; the horizon reddens toward the sun at dusk; the lower half stays dark (below).
+  THE DUSK, THE MOON AND THE STARS ARE BRANCHES ON UNIFORMS (`dusk` comes from the sun alone, `night`
+  is exactly 0 by day - `day_cycle`'s smoothstep): one side for the whole sky, so by day the stars'
+  two hashes and sine, the moon and the dusk's normalizations are not worked out per pixel to be
+  multiplied by zero, and the sun's small powers are products. Measured on the real driver, the old
+  and the new sky in one frame (one TIME): no pixel more than 1/255 apart; a sky-only frame by day
+  1.5-3.6 ms faster of ~24 in six of six pairs, at dusk the same (the same branches run).
   THE DAY (`day_cycle.gd`, `day_length` 1200 s, the sun up `day_share` of it, every session from
   the morning, noon and still on the proving ground): ONE DirectionalLight3D, the sun by day and the
   MOON by night (blue, from the other side, `MOON_SHARE` 0.6 of the sun) - never a second shadowed
@@ -3315,7 +3361,10 @@ project: read it before claiming how anything works.
   other. Model space because domes on one machine stand still there: the uniforms are written only
   when the list changes. The cut radius is `CUT_INSET` of the sphere, because the dome is a solid
   of FLAT plates lying inside its sphere; cutting at the full radius opens a sliver where neither
-  dome draws. A dome that goes dark stops cutting at once — the lit one re-asks every tick.
+  dome draws. A dome that goes dark stops cutting at once: the list is asked again whenever a dome
+  goes up or down or a shield comes or goes (`shield._lit_rev`) - every powered dome walked every
+  shield in the world every physics tick for the same list - and the charge is sent to the shader
+  only when it moved a 1/512 (`ENERGY_STEP`).
   Checked on the real driver: with the cut, one outline and no inner arcs.
 - **MERGED DOMES ARE ONE LATTICE, AND THE WHOLE HULL IS RELAXED, NOT A BAND.** On a hull of merged
   domes (same MACHINE only) every fragment takes its plate as the NEAREST CENTRE of one set solved by
@@ -3889,7 +3938,15 @@ project: read it before claiming how anything works.
   chain of six meshes), a shotgun up to fourteen — and a 13-machine fight put 3321 draw calls on
   screen. After: 773 in the same fight; one build went from 151 to 18. The originals stay in place
   with their `visible` untouched: their render LAYERS go to 0, so occlusion, effects that measure a
-  block (`_local_aabb`) and everything else that asks `visible` works as before. Only meshes from
+  block (`_local_aabb`) and everything else that asks `visible` works as before. AND THEY DO NOT
+  FOLLOW THE MACHINE IN THE RENDERING SERVER (`set_notify_transform` off; `_restore` turns it back on
+  and sends the transform once): a layers-0 instance is still a visible one to the engine, so every
+  physics tick a machine moved every original was sent its transform and moved in the scene's BVH -
+  ~4 a block, never drawn. Nor does a MOUNTED BLOCK'S BODY (`VehicleBlock._notification`): out of the
+  space, it was still sent the block's transform every tick; entering a world sends it anyway. The
+  node-side `global_transform`, which the batch and every effect read, is untouched. Measured on the
+  proving ground, three allies against three enemies, three runs a side: 15.2 -> 17.9 fps, the
+  physics tick 12.6 -> 11.3 ms, every pair faster. Only meshes from
   the block's own SCENE are batched (`owner == block`); what a script builds (hp overlay, laser
   rings, dome, beams) draws itself. **A BLOCK WHOSE SCRIPT MOVES A SCENE MESH SETS `moving_parts`**
   (wheels, every weapon, the drill), and its instances are copied from the live nodes each frame —
@@ -4269,10 +4326,10 @@ real screen. Those stay with the person holding the phone.
   `G` helpers, not through node paths.
 - When behaviour changes, update this file and the matching `docs/` page in the same commit.
 
-- **THE PLAYER TESTS FROM `main`, SO EVERY CHANGE LANDS ON `main`** (the player's rule). A session
-  may be handed a `claude/...` branch to work on; whatever is pushed there is ALSO fast-forwarded into
-  `main` and pushed, in the same step. Work that stayed on a side branch was work the player never
-  saw: fourteen commits sat there while every test ran on `main`.
+- **THE PLAYER TESTS FROM `main`, SO EVERY CHANGE LANDS ON `main`** (the player's rule), AND THE WORK
+  IS DONE ON `main` ITSELF (the player's call: "delete your claude/ branch and keep everything in
+  main"). Work that stayed on a side branch was work the player never saw: fourteen commits sat there
+  while every test ran on `main`.
 
 ## 5. Style and conventions
 

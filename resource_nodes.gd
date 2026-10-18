@@ -479,14 +479,22 @@ const REGION := 256
 ## станет видно. These are built AT ONCE: they hold every vein a drill or a miner can reach.
 const REGION_KEEP := 1
 ## THE FAR TREES NEED A RING MORE (`FAR_TREES` 420 m: one ring guarantees only 256 m, from a region's
-## edge), and a region that far out costs 127-158 ms to build on the debug build against 8 ms for one
-## the ground is already up under - its heights are new to the terrain. So the outer ring is built a
-## SLICE A FRAME (`_region_step`, `REGION_SLICE_USEC`), nearest first; the slicing changes nothing
-## about what is laid, since one region's rng draws in one order however the work is cut. A region
-## that comes inside REGION_KEEP while its job is half done is finished on the spot.
+## edge), and a region costs 127-158 ms to lay on the debug build where the ground is new to the
+## terrain - every candidate asks the generator for its height, its slope and its biome.
+## A REGION IS LAID ON A WORKER THREAD (`_region_work`, one task at a time, nearest first): it was a
+## 1.5 ms slice a frame on the main thread, and since the budget was checked between candidates a
+## frame took 1.5-4.5 ms of it while a ring filled - all the time, driving - and a region that came
+## inside REGION_KEEP half-built was finished on the spot, up to ~140 ms in one frame at a crossing.
+## The task reads the generator, never the terrain's `_memo` or `_hc` (`ChunkTerrain.thread_ground`):
+## the same function a built chunk's heights come from, so the same veins stand where they stood.
+## A region inside REGION_KEEP is never late: its task is waited for, or it is laid on the spot
+## (`_lay_now`) - the same function, on the main thread. HIGH PRIORITY: a low-priority task waits
+## behind the terrain's whole batch (the pool runs low priority on one or two threads), and waiting
+## for one from the main thread would wait for the batch too.
 const REGION_FAR := 2
-const REGION_SLICE_USEC := 1500
-var _region_jobs: Array = []
+var _region_queue: Array = []          # Vector2i, nearest first: the outer ring still to lay
+var _region_task: Dictionary = {}      # the one in flight: rk, job, id
+var _region_want: Dictionary = {}      # the regions round the player now
 
 var _regions: Dictionary = {}          # Vector2i региона → Array записей жил
 var _region_center := Vector2i(999999, 999999)
@@ -505,50 +513,87 @@ func _regions_tick() -> void:
 	for dz in range(-REGION_FAR, REGION_FAR + 1):
 		for dx in range(-REGION_FAR, REGION_FAR + 1):
 			want[here + Vector2i(dx, dz)] = true
+	_region_want = want
 	for k in _regions.keys():
 		if not want.has(k):
 			for v in _regions[k]:
 				if int(v["slot"]) >= 0:
 					_stream_out(v)          # слот и узел отдаём до того, как забудем запись
 			_regions.erase(k)
-	var jobs: Dictionary = {}
-	for j in _region_jobs:
-		if want.has(j["rk"]):
-			jobs[j["rk"]] = j
 	var queue: Array = []
+	var near: Array = []
 	for k in want:
 		if _regions.has(k):
 			continue
-		var job: Dictionary = jobs.get(k, {})
-		if job.is_empty():
-			job = _region_job(k)
 		if maxi(absi(k.x - here.x), absi(k.y - here.y)) <= REGION_KEEP:
-			_region_step(job, 0)               # a vein in reach is never late: built now
-			_regions[k] = job["out"]
-			_tag_region(k, job["out"])
-		else:
-			queue.append(job)
+			near.append(k)
+		elif _region_task.is_empty() or _region_task["rk"] != k:
+			queue.append(k)
+	_lay_now(near)                             # a vein in reach is never late
 	var p := _player_point()
-	queue.sort_custom(func(a, b): return _region_d2(a["rk"], p) < _region_d2(b["rk"], p))
-	_region_jobs = queue
+	queue.sort_custom(func(a, b): return _region_d2(a, p) < _region_d2(b, p))
+	_region_queue = queue
 	_rebuild_data()
+
+## Regions laid NOW, the frame waiting for them: the one in flight is waited for (it finishes sooner
+## than a second run), one alone is laid here, several - the first ring of a session - go to the pool
+## at once, so its every thread takes one.
+func _lay_now(rks: Array) -> void:
+	var tasks: Array = []
+	for rk in rks:
+		if not _region_task.is_empty() and _region_task["rk"] == rk:
+			tasks.append(_region_task)
+			_region_task = {}
+			continue
+		var job := _region_job(rk)
+		_region_snap(job)
+		if rks.size() == 1:
+			_region_work(job)
+			tasks.append({"rk": rk, "job": job})
+		else:
+			tasks.append({"rk": rk, "job": job,
+					"id": WorkerThreadPool.add_task(_region_work.bind(job), true, "vein region")})
+	for t in tasks:
+		if t.has("id"):
+			WorkerThreadPool.wait_for_task_completion(int(t["id"]))
+		_regions[t["rk"]] = t["job"]["out"]
+		_tag_region(t["rk"], t["job"]["out"])
 
 func _region_d2(rk: Vector2i, p: Vector3) -> float:
 	return Vector2((rk.x + 0.5) * REGION - p.x, (rk.y + 0.5) * REGION - p.z).length_squared()
 
-## The outer ring's next slice (called every frame): a finished region joins the data, and the next
-## streaming pass takes its trees in (`_last_cell` forgotten).
+## The outer ring (called every frame): a region whose task is done joins the data - unless the player
+## has left it meanwhile - and the next streaming pass takes its trees in (`_last_cell` forgotten);
+## then the nearest one still to lay goes to a worker.
 func _region_jobs_tick() -> void:
-	if _region_jobs.is_empty():
+	if not _region_task.is_empty():
+		var id: int = _region_task["id"]
+		if not WorkerThreadPool.is_task_completed(id):
+			return
+		WorkerThreadPool.wait_for_task_completion(id)
+		var rk: Vector2i = _region_task["rk"]
+		var got: Array = _region_task["job"]["out"]
+		_region_task = {}
+		if _region_want.has(rk) and not _regions.has(rk):
+			_regions[rk] = got
+			_tag_region(rk, got)
+			_rebuild_data()
+			_last_cell = Vector2i(1 << 30, 1 << 30)
+	while not _region_queue.is_empty():
+		var next: Vector2i = _region_queue.pop_front()
+		if _regions.has(next) or not _region_want.has(next):
+			continue
+		var job := _region_job(next)
+		_region_snap(job)
+		_region_task = {"rk": next, "job": job,
+				"id": WorkerThreadPool.add_task(_region_work.bind(job), true, "vein region")}
 		return
-	var job: Dictionary = _region_jobs[0]
-	if not _region_step(job, REGION_SLICE_USEC):
-		return
-	_region_jobs.pop_front()
-	_regions[job["rk"]] = job["out"]
-	_tag_region(job["rk"], job["out"])
-	_rebuild_data()
-	_last_cell = Vector2i(1 << 30, 1 << 30)
+
+## A task in flight reads the map's generator, which the map frees after this node leaves the tree.
+func _exit_tree() -> void:
+	if not _region_task.is_empty():
+		WorkerThreadPool.wait_for_task_completion(int(_region_task["id"]))
+		_region_task = {}
 
 func _player_point() -> Vector3:
 	var pts: Array = G.active_points()
@@ -615,7 +660,8 @@ func clear_made() -> int:
 ## независимо, а этот всегда даёт одно и то же.
 func _build_region(rk: Vector2i) -> Array:
 	var job := _region_job(rk)
-	_region_step(job, 0)
+	_region_snap(job)
+	_region_work(job)
 	return job["out"]
 
 ## ── HOW A REGION IS STOCKED (after TerraTech) ────────────────────────────────
@@ -680,7 +726,7 @@ static func _scatter(rng: RandomNumberGenerator, r: float) -> Vector2:
 	var d: float = rng.randf() * r
 	return Vector2(cos(a) * d, sin(a) * d)
 
-## A region's placement as a job that can stop between candidates and go on later (see REGION_FAR).
+## A region's placement as a job, laid by `_region_work` (see REGION_FAR) after `_region_snap`.
 ## Candidates are [point, cluster index, keep roll]; clusters carry what is decided per group.
 func _region_job(rk: Vector2i) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
@@ -719,60 +765,79 @@ func _region_job(rk: Vector2i) -> Dictionary:
 		clusters.append(cl)
 		for q in pts:
 			cand.append([q, clusters.size() - 1, 0.0])
-	return {"rk": rk, "rng": rng, "out": [], "grid": {}, "cl": clusters, "cand": cand, "i": 0}
+	return {"rk": rk, "rng": rng, "out": [], "cl": clusters, "cand": cand}
 
-## Runs the job until its region is laid or `budget_usec` is spent (0: no limit); true when laid.
-func _region_step(job: Dictionary, budget_usec: int) -> bool:
+## What `_region_work` reads off the main thread, taken on it just before the work starts: the
+## ground (`ChunkTerrain.thread_ground`), this node's frame and the debug switches (`G.debug` asks
+## the scene tree).
+var _warned_ground := false
+
+func _region_snap(job: Dictionary) -> void:
 	var map: Node = get_parent()
-	if map == null or not map.has_method("terrain_height_at"):
-		return true
-	var can_biome: bool = map.has_method("biome_at")
+	job["map"] = map
+	job["g"] = map.thread_ground() if map != null and map.has_method("thread_ground") else {}
+	if (job["g"] as Dictionary).is_empty() and not _warned_ground:
+		_warned_ground = true          # a moved map (thread_ground) lays nothing: say so, once
+		push_warning("resource_nodes: the map gives no ground to a worker (moved?) - no veins laid")
+	job["inv"] = global_transform.affine_inverse()
+	job["wood_on"] = _ore_enabled(0, true)
+	var on: Array = []
+	for i in ORE_FLAGS.size():
+		on.append(_ore_enabled(i, false))
+	job["ore_on"] = on
+
+## Lays the region: every candidate in turn, the rng drawn in one order. RUNS ON A WORKER THREAD (or
+## on the main one, `_lay_now`), so it reads only the job, this script's constants and exports and the
+## map's `thread_*` functions - no `G`, no node's transform, no `_memo` - and writes only into the job.
+func _region_work(job: Dictionary) -> void:
+	var g: Dictionary = job["g"]
+	if g.is_empty():
+		return
+	var map: Node = job["map"]
+	var inv: Transform3D = job["inv"]
+	var wood_on: bool = job["wood_on"]
+	var ore_on: Array = job["ore_on"]
 	var rk: Vector2i = job["rk"]
 	var rng: RandomNumberGenerator = job["rng"]
 	var out: Array = job["out"]
-	var grid: Dictionary = job["grid"]
+	var grid: Dictionary = {}
 	var clusters: Array = job["cl"]
-	var cand: Array = job["cand"]
 	var x0 := float(rk.x * REGION)
 	var z0 := float(rk.y * REGION)
-	var t0 := Time.get_ticks_usec()
-	while int(job["i"]) < cand.size():
-		if budget_usec > 0 and Time.get_ticks_usec() - t0 > budget_usec:
-			return false
-		var e: Array = cand[int(job["i"])]
-		job["i"] = int(job["i"]) + 1
+	for e in job["cand"]:
 		var pt: Vector2 = e[0]
 		if pt.x < x0 or pt.y < z0 or pt.x >= x0 + REGION or pt.y >= z0 + REGION:
 			continue                                   # a member past the region's edge
 		var cl: Dictionary = clusters[int(e[1])]
 		var wood: bool = cl["wood"]
-		if not wood:
-			if int(cl["metal"]) == -2:
-				_decide_deposit(cl, map, can_biome)
-			if int(cl["placed"]) >= int(cl["n"]) or not _ore_enabled(int(cl["metal"]), false):
+		if wood:
+			if not wood_on:
 				continue
-		var world := Vector3(pt.x, 0.0, pt.y)
-		var h: float = map.terrain_height_at(world)
+		else:
+			if int(cl["metal"]) == -2:
+				var c: Vector2 = cl["c"]
+				_decide_deposit(cl, map.thread_biome(g, c.x, c.y))
+			var metal: int = cl["metal"]
+			if int(cl["placed"]) >= int(cl["n"]) or (metal < ore_on.size() and not ore_on[metal]):
+				continue
+		var h: float = map.thread_height_at(g, pt.x, pt.y)
 		if h < min_height:
 			continue
-		var lp: Vector3 = to_local(Vector3(pt.x, h + 0.25, pt.y))
-		if _slope_at(map, lp.x, lp.z) > max_slope:
+		var lp: Vector3 = inv * Vector3(pt.x, h + 0.25, pt.y)
+		if _slope_work(map, g, lp.x, lp.z) > max_slope:
 			continue
 		if not _space_free(grid, lp, TREE_GAP if wood else ORE_GAP):
 			continue
 		var kind: int = 0
 		if wood:
-			if not _ore_enabled(0, true):
-				continue
-			var gw := Vector3(pt.x, h, pt.y)
-			if can_biome and map.has_method("salt_at") and float(map.salt_at(gw)) > 0.5:
+			if float(map.thread_salt(g, pt.x, pt.y)) > 0.5:
 				continue                               # no trees on a salt flat
-			var b: Vector3 = map.biome_at(gw) if can_biome else Vector3(0.0, 1.0, 0.0)
+			var b: Vector3 = map.thread_biome(g, pt.x, pt.y)
 			if b.x > 0.5:
 				continue                               # no trees in a canyon (the player's call)
 			if float(e[2]) > _tree_keep(b) * float(cl["keep"]):
 				continue
-			kind = _tree_kind_of(b, gw)
+			kind = _tree_kind_of(b, Vector3(pt.x, h, pt.y))
 		var key := Vector2i(floori(lp.x / SPACE_CELL), floori(lp.z / SPACE_CELL))
 		if not grid.has(key):
 			grid[key] = []
@@ -787,16 +852,21 @@ func _region_step(job: Dictionary, budget_usec: int) -> bool:
 			"ore_type": ore_colors.size() if wood else int(cl["metal"]),
 			"wood": wood, "tree": kind, "slot": -1, "node": null,
 		})
-	return true
 
-## A deposit's metal and size, decided once from its centre: the metal by the biome there
+## `_slope_at` for a worker: the same four grid nodes, from the generator.
+func _slope_work(map: Node, g: Dictionary, lx: float, lz: float) -> float:
+	var cx: int = roundi(lx)
+	var cz: int = roundi(lz)
+	var a: float = map.thread_cell_height(g, cx + 3, cz)
+	var b: float = map.thread_cell_height(g, cx - 3, cz)
+	var c: float = map.thread_cell_height(g, cx, cz + 3)
+	var d: float = map.thread_cell_height(g, cx, cz - 3)
+	return maxf(maxf(a, b), maxf(c, d)) - minf(minf(a, b), minf(c, d))
+
+## A deposit's metal and size, decided once from the biome at its centre: the metal by the biome
 ## (`_metal_for`), DEPOSIT_RICH more veins where canyon or mountain holds the centre.
-func _decide_deposit(cl: Dictionary, map: Node, can_biome: bool) -> void:
-	var c: Vector2 = cl["c"]
-	var b := Vector3(0.0, 0.0, 0.0)
-	if can_biome:
-		b = map.biome_at(Vector3(c.x, 0.0, c.y))
-	cl["metal"] = _metal_for(b, can_biome and not bool(cl["wild"]), int(cl["wild_metal"]), float(cl["roll"]))
+func _decide_deposit(cl: Dictionary, b: Vector3) -> void:
+	cl["metal"] = _metal_for(b, not bool(cl["wild"]), int(cl["wild_metal"]), float(cl["roll"]))
 	var n: int = DEPOSIT_VEINS.x + int(float(cl["size"]) * float(DEPOSIT_VEINS.y - DEPOSIT_VEINS.x + 1))
 	if maxf(b.x, b.z) > 0.5:
 		n += DEPOSIT_RICH

@@ -183,3 +183,7 @@ ground_sun={
 "type": "vec4",
 "value": Vector4(1, 0.93, 0.8, 0)
 }
+
+[threading]
+
+worker_pool/low_priority_thread_ratio=0.5

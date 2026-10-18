@@ -325,8 +325,6 @@ func _pick_seed(b: TerrainBiomes) -> int:
 ##   there is a fight nobody can see.
 func _score_seed(b: TerrainBiomes) -> float:
 	var half: float = float(MAP_SIZE) * 0.5
-	# One Callable for the whole sweep: building it per sample allocates thousands of them.
-	var nz: Callable = b.noise
 	var canyon: float = 0.0
 	var mountain: float = 0.0
 	var blocked: float = 0.0
@@ -336,9 +334,9 @@ func _score_seed(b: TerrainBiomes) -> float:
 		var z: float = -half
 		while z < half:
 			var wp := Vector2(x, z)
-			var c: float = b.canyon_mask(wp, nz)
-			var mt: float = b.mountain_mask(wp, nz)
-			canyon += c * b.meadow_mask(wp, nz)
+			var c: float = b.canyon_mask(wp)
+			var mt: float = b.mountain_mask(wp)
+			canyon += c * b.meadow_mask(wp)
 			mountain += mt
 			if wp.length_squared() <= CLEAR_RADIUS * CLEAR_RADIUS:
 				blocked = maxf(blocked, maxf(c, mt))

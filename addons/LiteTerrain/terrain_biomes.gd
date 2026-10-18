@@ -153,10 +153,11 @@ const SALT_OFFSET := Vector2(331.0, 19.0)
 ## editor last previewed.
 var mask_offset: Vector2 = Vector2.ZERO
 
-## THE NOISE THE MASKS ARE BUILT ON, in one place. Every mask above takes it as a Callable because
-## its callers used to each carry their own copy of those lines - the generator, the terrain, the
-## menu backdrop - and a copy is how the painted region and the carved region drifted apart once
-## already. `biomes.noise` below is that Callable; pass it unless you are the shader.
+## THE NOISE THE MASKS ARE BUILT ON, in one place, and every mask reads it HERE - its callers used
+## to each carry their own copy of those lines (the generator, the terrain, the menu backdrop), and a
+## copy is how the painted region and the carved region drifted apart once already. The masks took it
+## as a Callable once (`biomes.noise`), always this very function: a Callable dispatch and a wrapper
+## frame per mask, ~13% of `raw_height_at` on the optimize=none build, for a choice nobody made.
 ##
 ## IT IS NATIVE NOISE NOW, AND THAT IS THE WHOLE POINT. This used to be eight lines of GDScript —
 ## four hashes and three lerps — and those eight lines were where the world's loading time lived.
@@ -199,11 +200,6 @@ static func cv_noise(p: Vector2) -> float:
 	# заданы в нём, а движок отдаёт -1..1.
 	return _nz.get_noise_2d(p.x, p.y) * 0.5 + 0.5
 
-## The same function as a Callable to hand to the masks. A static method cannot be passed by name
-## in every Godot build; a method on the resource can.
-func noise(p: Vector2) -> float:
-	return cv_noise(p)
-
 ## Offset from a seed. Any deterministic spread does; this one just has to be far enough that
 ## neighbouring seeds do not overlap their patterns.
 static func offset_for_seed(seed_value: int) -> Vector2:
@@ -221,49 +217,62 @@ var mountains_on := true
 var salt_on := true
 
 ## 0 is desert, 1 is meadow. wp is world XZ.
-func meadow_mask(wp: Vector2, noise: Callable) -> float:
+func meadow_mask(wp: Vector2) -> float:
 	if not desert_on:
 		return 1.0
-	var n: float = noise.call(wp / biome_scale + mask_offset)
+	var n: float = cv_noise(wp / biome_scale + mask_offset)
 	n = clampf((n - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
 	return smoothstep(biome_bias - biome_blend, biome_bias + biome_blend, n)
 
-func canyon_mask(wp: Vector2, noise: Callable) -> float:
+func canyon_mask(wp: Vector2) -> float:
 	if not canyon_on:
 		return 0.0
-	var n: float = noise.call(wp / canyon_scale + CANYON_OFFSET + mask_offset)
+	var n: float = cv_noise(wp / canyon_scale + CANYON_OFFSET + mask_offset)
 	return smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge, n)
 
-func mountain_mask(wp: Vector2, noise: Callable) -> float:
+func mountain_mask(wp: Vector2) -> float:
 	if not mountains_on:
 		return 0.0
-	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
+	return mountain_mask_n(mountain_n(wp))
+
+## The mountains' noise at a point: the mask and the dome both read it, and a caller wanting both
+## (`terrain_gen.raw_height_at`) reads it once and hands it to `mountain_mask_n` / `mountain_dome_n`.
+func mountain_n(wp: Vector2) -> float:
+	return cv_noise(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
+
+func mountain_mask_n(n: float) -> float:
+	if not mountains_on:
+		return 0.0
 	return smoothstep(mountain_threshold - mountain_edge, mountain_threshold + mountain_edge, n)
 
+func mountain_dome_n(n: float) -> float:
+	if not mountains_on:
+		return 0.0
+	return smoothstep(mountain_threshold - mountain_edge, 0.95, n)
+
 ## 0..1: a salt flat here. Only on the desert, never under the mountains - the same masks decide.
-func salt_mask(wp: Vector2, noise: Callable) -> float:
-	var m: float = salt_raw(wp, noise)
+func salt_mask(wp: Vector2) -> float:
+	var m: float = salt_raw(wp)
 	if m <= 0.0:
 		return 0.0
-	return m * (1.0 - meadow_mask(wp, noise)) * (1.0 - mountain_mask(wp, noise))
+	return m * (1.0 - meadow_mask(wp)) * (1.0 - mountain_mask(wp))
 
 ## The salt mask BEFORE the desert and the mountains take their share: for a caller that has those
 ## two masks in hand already (terrain_gen.raw_height_at - two noise reads a point less on the
 ## world's hottest path; salt_mask in full cost it 17%, measured).
-func salt_raw(wp: Vector2, noise: Callable) -> float:
+func salt_raw(wp: Vector2) -> float:
 	if not salt_on:
 		return 0.0
-	var n: float = noise.call(wp / salt_scale + SALT_OFFSET + mask_offset)
+	var n: float = cv_noise(wp / salt_scale + SALT_OFFSET + mask_offset)
 	return smoothstep(salt_threshold - salt_edge, salt_threshold + salt_edge, n)
 
 ## The mountain dome — not the mask but its interior: it ramps up smoothly from the
 ## threshold to the peak, and the generator raises the landform by it so the slopes stay
 ## gentle enough to drive on.
-func mountain_dome(wp: Vector2, noise: Callable) -> float:
+func mountain_dome(wp: Vector2) -> float:
 	if not mountains_on:
 		return 0.0
-	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
-	return smoothstep(mountain_threshold - mountain_edge, 0.95, n)
+	return mountain_dome_n(mountain_n(wp))
 
 # ── Handing values to the shader ──────────────────────────────────────────────
 ## Writes the COLOURS and grass settings into the material's uniforms. Noise thresholds and

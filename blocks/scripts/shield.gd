@@ -273,6 +273,8 @@ func _physics_process(delta: float) -> void:
 		_cd = SHIELD_BREAK_CD
 	var powered: bool = _cd <= 0.0 and has_energy
 	_animate_emitter(delta, powered, mounted and _cd > 0.0)
+	if _dome.visible != powered:
+		_lit_rev += 1
 	_dome.visible = powered
 	var cs := _dome.get_child(0) as CollisionShape3D
 	if cs:
@@ -284,14 +286,36 @@ func _physics_process(delta: float) -> void:
 	# купол читался как «эффект гаснет», осыпающаяся решётка — как «щита осталось на столько».
 	# Поэтому уровень уходит в шейдер как есть, без прежней поправки 0.35 + 0.65·lvl.
 	if powered and v != null and v.has_method("energy_fill"):
-		_set_dome_param("energy", clampf(float(v.energy_fill()), 0.0, 1.0))
+		var e: float = clampf(float(v.energy_fill()), 0.0, 1.0)
+		if absf(e - _energy_sent) >= ENERGY_STEP or (e != _energy_sent and (e == 0.0 or e == 1.0)):
+			_energy_sent = e                 # the cap grows by whole plates: a 1/512 step is never seen
+			_set_dome_param("energy", e)
 	if powered:
-		_update_cuts(v)
+		var vid: int = v.get_instance_id() if v != null else 0
+		if _cuts_rev != _lit_rev or _cuts_vid != vid:
+			_cuts_rev = _lit_rev
+			_cuts_vid = vid
+			_update_cuts(v)
 		_poll_seam()
 
 ## Every other LIT dome of the same side whose sphere reaches into this one, in this dome's own axes.
 ## Domes on one machine stand still in those axes, so the uniforms are written only when the list
 ## actually changes - a driving machine does not pay a material write per tick for them.
+## AND THE LIST IS ASKED FOR ONLY WHEN IT CAN HAVE CHANGED (`_lit_rev`: a dome went up or down, a
+## shield came or went, or this one changed machines): every powered dome walked every shield in the
+## world every physics tick - a group fetch and three dynamic calls a shield - to find the same list.
+static var _lit_rev: int = 0
+var _cuts_rev: int = -1
+var _cuts_vid: int = 0
+const ENERGY_STEP := 1.0 / 512.0
+var _energy_sent: float = -1.0
+
+func _enter_tree() -> void:
+	_lit_rev += 1
+
+func _exit_tree() -> void:
+	_lit_rev += 1
+
 func _update_cuts(v: Node) -> void:
 	var inv: Transform3D = _dome.global_transform.affine_inverse()
 	var reach2: float = pow(2.0 * SHIELD_RADIUS * dome_scale, 2.0)
