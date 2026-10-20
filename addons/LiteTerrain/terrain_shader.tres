@@ -41,4 +41,5 @@ shader_parameter/grass_shade = 0.62
 shader_parameter/grass_fade = Vector2(72, 96)
 shader_parameter/trample_center = Vector2(0, 0)
 shader_parameter/trample_size = 130.0
+shader_parameter/trample_on = false
 shader_parameter/snow_height = 0.3

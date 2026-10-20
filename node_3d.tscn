@@ -573,6 +573,8 @@ top_level = true
 cast_shadow = 0
 script = ExtResource("24_dhlwf")
 map_node = NodePath("..")
+flatten_lifetime = 12.0
+max_footprints = 2000
 
 [node name="BiomeProps" type="Node3D" parent="map" unique_id=199846371]
 script = ExtResource("27_biomescat")
@@ -625,6 +627,7 @@ script = ExtResource("28_worldpersist")
 script = ExtResource("29_outposts")
 
 [node name="Contracts" type="Node" parent="." unique_id=3615115]
+process_mode = 4
 script = ExtResource("30_contracts")
 
 [node name="Raids" type="Node" parent="." unique_id=3615116]
