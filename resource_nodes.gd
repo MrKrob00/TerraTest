@@ -675,8 +675,7 @@ func _build_region(rk: Vector2i) -> Array:
 ##     thins it (`_tree_keep`: the meadow thick, canyon and mountain thinner, palms in the desert in
 ##     small oases) and the salt flat takes all of it;
 ##   DEPOSITS - a centre in open ground (the forest field under DEPOSIT_FOREST_MAX, so ore stands in
-##     clearings), its metal decided ONCE for the whole deposit (`_metal_for`), and DEPOSIT_VEINS of
-##     that metal round it, DEPOSIT_RICH more in the canyon and on the mountains;
+##     clearings), DEPOSIT_SIZE_W veins round it (3-6), EACH ITS OWN METAL rolled by the biome (`_metal_for`);
 ##   LONE TREES - LONE_TREES points anywhere the biome lets a tree stand, so open ground is not bare.
 ## Every member stays INSIDE its own region: a region is laid knowing nothing of its neighbours, and
 ## spacing is checked only within it. All the rng is drawn when the job is made, so the layout is
@@ -694,8 +693,14 @@ const LONE_TREES := 6
 const LONE_KEEP := 0.6
 const DEPOSIT_TRIES := 7
 const DEPOSIT_FOREST_MAX := 0.3
-const DEPOSIT_VEINS := Vector2i(3, 5)
-const DEPOSIT_RICH := 2
+## VEINS IN A DEPOSIT, 3 to 6, by weight (the player's call: mostly three, six a rare find).
+const DEPOSIT_SIZE_W := [[3, 0.75], [4, 0.12], [5, 0.08], [6, 0.05]]
+## Candidate points per deposit: the most veins plus spares for points the slope or spacing reject.
+const DEPOSIT_POINTS := 8
+## EVERY METAL CAN STAND IN EVERY BIOME; the biome only favours its own. Each metal weighs
+## ORE_BASE_W plus its biome's share at the deposit's centre, so in a pure biome its metal is
+## (1 + 0.22) / (1 + 4 * 0.22) = 65% of veins and each other metal ~12%.
+const ORE_BASE_W := 0.22
 const DEPOSIT_R := 8.0
 ## Gaps between accepted points: a tree drawn at TREE_SCALE, a vein ~3 m across (VEIN_SIZE). The
 ## hash grid's cell is SPACE_CELL, which has to be at least the largest gap.
@@ -758,13 +763,16 @@ func _region_job(rk: Vector2i) -> Dictionary:
 				"wild_metal": rng.randi() % types, "roll": rng.randf(), "size": rng.randf(),
 				"metal": -2, "n": 0, "placed": 0}
 		var pts: Array = []
-		for _j in DEPOSIT_VEINS.y + DEPOSIT_RICH:
+		for _j in DEPOSIT_POINTS:
 			pts.append(c + _scatter(rng, DEPOSIT_R))
+		var rolls: Array = []                          # each vein's own metal roll
+		for _j in DEPOSIT_POINTS:
+			rolls.append(rng.randf())
 		if forest.get_noise_2d(c.x, c.y) > DEPOSIT_FOREST_MAX:
 			continue                                   # ore stands in clearings, not under a forest
 		clusters.append(cl)
-		for q in pts:
-			cand.append([q, clusters.size() - 1, 0.0])
+		for j in pts.size():
+			cand.append([pts[j], clusters.size() - 1, float(rolls[j])])
 	return {"rk": rk, "rng": rng, "out": [], "cl": clusters, "cand": cand}
 
 ## What `_region_work` reads off the main thread, taken on it just before the work starts: the
@@ -805,6 +813,7 @@ func _region_work(job: Dictionary) -> void:
 	var x0 := float(rk.x * REGION)
 	var z0 := float(rk.y * REGION)
 	for e in job["cand"]:
+		var metal: int = 0
 		var pt: Vector2 = e[0]
 		if pt.x < x0 or pt.y < z0 or pt.x >= x0 + REGION or pt.y >= z0 + REGION:
 			continue                                   # a member past the region's edge
@@ -817,8 +826,11 @@ func _region_work(job: Dictionary) -> void:
 			if int(cl["metal"]) == -2:
 				var c: Vector2 = cl["c"]
 				_decide_deposit(cl, map.thread_biome(g, c.x, c.y))
-			var metal: int = cl["metal"]
-			if int(cl["placed"]) >= int(cl["n"]) or (metal < ore_on.size() and not ore_on[metal]):
+			if int(cl["placed"]) >= int(cl["n"]):
+				continue
+			# THE METAL IS THE VEIN'S OWN, not the deposit's: a deposit is a mixed field.
+			metal = _metal_for(cl["b"], not bool(cl["wild"]), float(e[2]))
+			if metal < ore_on.size() and not ore_on[metal]:
 				continue
 		var h: float = map.thread_height_at(g, pt.x, pt.y)
 		if h < min_height:
@@ -849,7 +861,7 @@ func _region_work(job: Dictionary) -> void:
 			"gpos": Vector3(pt.x, h + 0.25, pt.y),
 			"scene": resource_nodes[rng.randi() % resource_nodes.size()] \
 					if not resource_nodes.is_empty() else null,
-			"ore_type": ore_colors.size() if wood else int(cl["metal"]),
+			"ore_type": ore_colors.size() if wood else metal,
 			"wood": wood, "tree": kind, "slot": -1, "node": null,
 		})
 
@@ -863,14 +875,19 @@ func _slope_work(map: Node, g: Dictionary, lx: float, lz: float) -> float:
 	var d: float = map.thread_cell_height(g, cx, cz - 3)
 	return maxf(maxf(a, b), maxf(c, d)) - minf(minf(a, b), minf(c, d))
 
-## A deposit's metal and size, decided once from the biome at its centre: the metal by the biome
-## (`_metal_for`), DEPOSIT_RICH more veins where canyon or mountain holds the centre.
+## A deposit's size and biome, decided once at its centre: the size by DEPOSIT_SIZE_W, the biome
+## kept for each vein's own metal roll (`_metal_for`).
 func _decide_deposit(cl: Dictionary, b: Vector3) -> void:
-	cl["metal"] = _metal_for(b, not bool(cl["wild"]), int(cl["wild_metal"]), float(cl["roll"]))
-	var n: int = DEPOSIT_VEINS.x + int(float(cl["size"]) * float(DEPOSIT_VEINS.y - DEPOSIT_VEINS.x + 1))
-	if maxf(b.x, b.z) > 0.5:
-		n += DEPOSIT_RICH
-	cl["n"] = mini(n, DEPOSIT_VEINS.y + DEPOSIT_RICH)
+	cl["metal"] = -1
+	cl["b"] = b
+	var roll: float = float(cl["size"])
+	var n: int = int(DEPOSIT_SIZE_W[0][0])
+	for e in DEPOSIT_SIZE_W:
+		n = int(e[0])
+		roll -= float(e[1])
+		if roll < 0.0:
+			break
+	cl["n"] = n
 
 ## How thick trees stand at a point, by its biome blend (TREE_KEEP_BIOME; the desert is what is left).
 func _tree_keep(b: Vector3) -> float:
@@ -965,22 +982,24 @@ func _ore_enabled(ore_type: int, wood: bool) -> bool:
 		return G.debug(&"ore_wood")
 	return G.debug(ORE_FLAGS[ore_type]) if ore_type < ORE_FLAGS.size() else true
 
-## `wild_metal` when the deposit is a wild one (or no biome answers), else a roll over the biome's weights.
-func _metal_for(m: Vector3, by_biome: bool, wild_metal: int, roll01: float) -> int:
+## A vein's metal: a roll over every metal, each weighing ORE_BASE_W plus its biome's share (a wild
+## deposit ignores the biome - all metals alike).
+func _metal_for(m: Vector3, by_biome: bool, roll01: float) -> int:
 	var types: int = maxi(ore_colors.size(), 1)
-	if not by_biome:
-		return wild_metal % types
 	# biome_at отдаёт (каньон, луг, горы); пустыня — это то, что осталось.
 	var desert: float = clampf(1.0 - maxf(m.x, maxf(m.y, m.z)), 0.0, 1.0)
 	var weights := [desert, m.y, m.x, m.z]        # феррит, куприт, силикат, титанит
+	if not by_biome:
+		weights = [0.0, 0.0, 0.0, 0.0]
 	var total: float = 0.0
 	for i in mini(weights.size(), types):
-		total += maxf(float(weights[i]), 0.0)
+		weights[i] = maxf(float(weights[i]), 0.0) + ORE_BASE_W
+		total += float(weights[i])
 	if total <= 0.001:
 		return 0                                   # ни один биом не выражен — базовый металл
 	var roll: float = roll01 * total
 	for i in mini(weights.size(), types):
-		roll -= maxf(float(weights[i]), 0.0)
+		roll -= float(weights[i])
 		if roll <= 0.0:
 			return i
 	return 0
