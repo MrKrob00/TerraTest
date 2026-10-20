@@ -489,9 +489,10 @@ var _codex_col: VBoxContainer = null
 #
 # Строится из тех же таблиц, что и всё остальное (G.METAL_NAME, G.COMP_NAME, G.COMP_PARENT):
 # второй, написанный руками список однажды отстал бы на материал и промолчал.
-const CNODE_W := 104.0
+const CNODE_W := 132.0
 const CNODE_H := 42.0
-const CCOL_W := 150.0
+const CNODE_ICON := 34.0               # material picture inside a chain node
+const CCOL_W := 178.0
 const CROW_H := 50.0
 
 var _codex_root: VBoxContainer = null
@@ -652,7 +653,10 @@ func _make_codex_block_node(bt: int, at: Vector2) -> Control:
 ## игрок может открыть гараж (`Icons.get_icon` отдаёт null). Узел тогда рисуется как рисовался,
 ## а `Icons.baked` перестроит вкладку.
 func _node_icon(btn: Button, bt: int) -> bool:
-	var tex: Texture2D = Icons.get_icon(bt)
+	return _node_icon_tex(btn, Icons.get_icon(bt), TNODE_ICON)
+
+## The same picture for a material node of the Codex chain (`Icons.get_material_icon`).
+func _node_icon_tex(btn: Button, tex: Texture2D, side: float) -> bool:
 	if tex == null:
 		return false
 	var ic := TextureRect.new()
@@ -662,9 +666,9 @@ func _node_icon(btn: Button, bt: int) -> bool:
 	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE      # тап по картинке — это тап по узлу
 	ic.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	ic.offset_left = 5.0
-	ic.offset_right = 5.0 + TNODE_ICON
-	ic.offset_top = -TNODE_ICON * 0.5
-	ic.offset_bottom = TNODE_ICON * 0.5
+	ic.offset_right = 5.0 + side
+	ic.offset_top = -side * 0.5
+	ic.offset_bottom = side * 0.5
 	btn.add_child(ic)
 	return true
 
@@ -675,7 +679,7 @@ func _codex_codex_graph() -> void:
 	# поэтому связей у него нет и своей записи в каталоге тоже.
 	var col_raw: Array = []
 	for m in G.METAL_NAME.size():
-		col_raw.append({"name": tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "key": "m%d" % m})
+		col_raw.append({"name": tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "key": "m%d" % m, "icon": "ore%d" % m})
 	# ДЕРЕВО СТОИТ В СЫРЬЕ, УГОЛЬ — В ПЕРЕДЕЛЕ. Раньше уголь висел в первой колонке особняком,
 	# без единой связи: его добывали, и он никуда не вёл. Теперь он ровно такой же передел,
 	# как слиток из руды, и линия между ними это показывает.
@@ -750,6 +754,17 @@ func _make_chain_node(it: Dictionary) -> Control:
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	btn.add_theme_font_size_override("font_size", 11)
 	var key := String(it["key"])
+	# The material's own baked picture at the left, as the block nodes carry theirs.
+	var tex: Texture2D = Icons.get_material_icon(String(it.get("icon", key)))
+	var st := StyleBoxFlat.new()
+	st.set_corner_radius_all(8)
+	st.set_border_width_all(2)
+	st.bg_color = Color(0.06, 0.12, 0.14, 0.92)
+	st.border_color = Color(0.3, 0.6, 0.66, 0.6)
+	st.content_margin_right = 6
+	st.content_margin_left = 6 + (CNODE_ICON + 5 if _node_icon_tex(btn, tex, CNODE_ICON) else 0.0)
+	for sname in [&"normal", &"hover", &"focus", &"disabled"]:
+		btn.add_theme_stylebox_override(sname, st)
 	if key == "":
 		btn.disabled = true          # у угля своей записи в каталоге нет
 	else:

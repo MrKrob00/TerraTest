@@ -86,11 +86,12 @@ func _ready() -> void:
 ## 71: the Falsus stabiliser rebuilt as the artist's own kit (art/falsus_wheels.py).
 ## 72: the Aero light wheel on its own model (art/aero_wheels.py).
 ## 73: the Marlit light and heavy wheels (art/marlit_wheels.py).
-const RECIPE := 73
+## 74: materials too - ore, ingots, coal, wood and every component (`mat_<key>.png`), for the Codex.
+const RECIPE := 74
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
-		"n": _block_list().size(),
+		"n": _block_list().size() + material_keys().size(),
 		"r": RECIPE,
 	}
 
@@ -115,7 +116,46 @@ func _maybe_bake() -> void:
 			return
 		_bake_all(gone)                      # the batch stands, only its holes are filled
 		return
-	_bake_all(_block_list())
+	_bake_all(_block_list() + material_keys())
+
+## EVERY MATERIAL THE CODEX SHOWS, by kind key (resource.kind_key): ore and ingot of each metal,
+## coal, wood, every component. Baked in the same studio as the blocks, from the item's own model.
+func material_keys() -> Array:
+	var out: Array = []
+	for m in G.METAL_NAME.size():
+		out.append("ore%d" % m)
+		out.append(G.metal_key(m))
+	out.append("coal")
+	out.append("wood")
+	for c in G.COMP_NAME.size():
+		out.append(G.comp_key(c))
+	return out
+
+func _mat_path(key: String) -> String:
+	return "%s/mat_%s.png" % [DIR, key]
+
+const RESOURCE_SCENE := preload("res://resource.tscn")
+
+## A material's portrait: the item scene WITH its script (the script is what picks the model and the
+## tint by kind), frozen, and only its model mesh copied - the glow quad under it is light, not shape.
+func _bake_material(sv: SubViewport, cam: Camera3D, key: String) -> void:
+	var src := RESOURCE_SCENE.instantiate() as RigidBody3D
+	src.freeze = true
+	src.process_mode = Node.PROCESS_MODE_DISABLED
+	sv.add_child(src)
+	src.set_kind_key(key)
+	await get_tree().process_frame
+	var model := Node3D.new()
+	var mi := src.get_node_or_null("MeshInstance3D/ResourceMesh") as MeshInstance3D
+	if mi != null and mi.mesh != null:
+		var cp := MeshInstance3D.new()
+		cp.mesh = mi.mesh
+		cp.material_override = mi.material_override
+		model.add_child(cp)
+		cp.global_transform = mi.global_transform
+	src.queue_free()
+	sv.add_child(model)
+	await _shoot(sv, cam, model, Vector3(1.0, 0.9, 1.0), _mat_path(key))
 
 ## Блоки, у которых есть сцена. Снятые (RETIRED_BLOCKS) не печём: они существуют только ради
 ## старых сохранений и в интерфейсе не показываются.
@@ -138,6 +178,9 @@ func _missing() -> Array:
 	for bt in _block_list():
 		if not FileAccess.file_exists("%s/%s.png" % [DIR, G.block_key(int(bt))]):
 			out.append(int(bt))
+	for k in material_keys():
+		if not FileAccess.file_exists(_mat_path(k)):
+			out.append(k)
 	return out
 
 func _bake_all(list: Array) -> void:
@@ -148,7 +191,10 @@ func _bake_all(list: Array) -> void:
 	var cam: Camera3D = st[1]
 	var n := 0
 	for bt in list:
-		await _bake_one(sv, cam, int(bt))
+		if bt is String:
+			await _bake_material(sv, cam, bt)
+		else:
+			await _bake_one(sv, cam, int(bt))
 		n += 1
 		if n % PER_FRAME == 0:
 			await get_tree().process_frame
@@ -240,6 +286,16 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 		cp.global_transform = mi.global_transform
 	src.queue_free()
 	sv.add_child(model)
+	var dir := Vector3(1.0, 0.8, 1.0)
+	if scn_dir != Vector3.ZERO:
+		dir = scn_dir
+	# Имя файла — ЭНУМ-КЛЮЧ, как в сохранении (см. G.block_key): по номеру файл однажды достался
+	# бы не тому блоку, а перенумерование enum это правка, которую никто не заметит.
+	await _shoot(sv, cam, model, dir, "%s/%s.png" % [DIR, G.block_key(bt)])
+	_cache.erase(bt)
+
+## Frame the model three-quarters from `dir`, render one frame and save it to `path`.
+func _shoot(sv: SubViewport, cam: Camera3D, model: Node3D, dir: Vector3, path: String) -> void:
 	await get_tree().process_frame
 	var box: AABB = _aabb(model)
 	if box.size.length() < 0.0001:
@@ -251,9 +307,6 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	var r: float = box.size.length() * 0.5
 	# A scene may name its own side (`portrait_dir`, block axes): the default back-right shows the
 	# Marlit cabin's dark back plate, not its visor.
-	var dir := Vector3(1.0, 0.8, 1.0)
-	if scn_dir != Vector3.ZERO:
-		dir = scn_dir
 	dir = dir.normalized()
 	cam.look_at_from_position(c3 + dir * (r * 4.0), c3, Vector3.UP)
 	cam.size = r * 2.05                      # чуть шире габарита: углы не режутся
@@ -262,10 +315,7 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var img: Image = sv.get_texture().get_image()
-	# Имя файла — ЭНУМ-КЛЮЧ, как в сохранении (см. G.block_key): по номеру файл однажды достался
-	# бы не тому блоку, а перенумерование enum это правка, которую никто не заметит.
-	img.save_png("%s/%s.png" % [DIR, G.block_key(bt)])
-	_cache.erase(bt)
+	img.save_png(path)
 	model.queue_free()
 
 # ── Saved builds: a picture of the whole machine ────────────────────────────
@@ -398,6 +448,23 @@ func get_icon(bt: int) -> Texture2D:
 		return null
 	var tex := ImageTexture.create_from_image(img)
 	_cache[bt] = tex
+	return tex
+
+## A material's picture by kind key ("ore0", "m1", "c7", "coal", "wood"), or null until baked.
+func get_material_icon(key: String) -> Texture2D:
+	if key == "":
+		return null
+	var ck := "mat:" + key
+	if _cache.has(ck):
+		return _cache[ck]
+	var path := _mat_path(key)
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(path)
+	if img == null:
+		return null
+	var tex := ImageTexture.create_from_image(img)
+	_cache[ck] = tex
 	return tex
 
 func is_ready() -> bool:
