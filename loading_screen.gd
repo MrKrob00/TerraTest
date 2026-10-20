@@ -418,7 +418,7 @@ func _hook_terrain() -> void:
 
 const FX_WARMUP := preload("res://fx_warmup.gd")
 ## The warm-up may take this long at most; the screen dissolves anyway after it.
-const WARMUP_MAX := 3.0
+const WARMUP_MAX := 10.0
 
 func _finish() -> void:
 	if _phase == 2:

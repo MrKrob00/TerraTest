@@ -8,11 +8,22 @@ extends Node3D
 # lance, a flash lamp, a ground mark, the landing wave, a blast, a block's glitch and hit overlay,
 # a lock frame; and the MultiMesh variants (a different program in GLES3) of the rounds' streak and
 # the digits. A few frames later it is all gone, and so is this node.
+#
+# THE SAME FOR EVERYTHING ELSE THE WORLD DRAWS LATER (the player: "every new shader freezes the game on
+# the first start"). After the effects, every block model (as a plain mesh AND as a MultiMesh - the
+# machine batch draws them that way, a different program in GLES3) and every material item - ore,
+# ingots, coal, wood, components - is shown for a couple of frames in front of the camera, BLOCKS_PER_FRAME
+# at a time so no single frame waits for all of them, under a lamp of our own (WARM_LAMP) so the
+# omni-lit variant of each, the terrain's too, compiles here and not at the first explosion.
 
 signal done
 
 const FRAMES := 4
 const AHEAD := 8.0
+## Block models put up per frame; each stays HOLD_FRAMES frames (the draw that compiles must happen).
+const BLOCKS_PER_FRAME := 6
+const HOLD_FRAMES := 2
+const ITEM_SCENE := preload("res://resource.tscn")
 
 var _parts: Array = []
 
@@ -25,8 +36,16 @@ func _run() -> void:
 		var dir: Vector3 = -cam.global_transform.basis.z
 		var pos: Vector3 = cam.global_position + dir * AHEAD
 		global_position = pos
+		var lamp := OmniLight3D.new()           # WARM_LAMP: lit-by-omni variants for all below
+		lamp.omni_range = 12.0
+		add_child(lamp)
+		lamp.global_position = pos + Vector3.UP * 2.0
+		_parts.append(lamp)
 		_effects(pos, dir)
 		_multimeshes(pos)
+		for i in FRAMES:
+			await get_tree().process_frame
+		await _models(pos, cam)
 	for i in FRAMES:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
@@ -81,3 +100,85 @@ func _multimeshes(pos: Vector3) -> void:
 		add_child(mmi)
 		mmi.global_position = pos
 		_parts.append(mmi)
+
+## Every block's meshes and every material item, a batch a frame (see the header).
+func _models(pos: Vector3, cam: Camera3D) -> void:
+	var batch: Array = []
+	for bt in G.Block.values():
+		var b: int = int(bt)
+		if b == G.Block.EMPTY or G.RETIRED_BLOCKS.has(b):
+			continue
+		var scn: PackedScene = G.get_scene(b)
+		if scn != null:
+			batch.append(scn)
+	var keys: Array = Icons.material_keys() if Icons.has_method("material_keys") else []
+	var i := 0
+	while i < batch.size() + keys.size():
+		var shown: Array = []
+		for _j in BLOCKS_PER_FRAME:
+			if i >= batch.size() + keys.size():
+				break
+			var n: Node3D = _block_copy(batch[i]) if i < batch.size() else _item(String(keys[i - batch.size()]))
+			i += 1
+			if n == null:
+				continue
+			add_child(n)
+			# a little apart and in front, so none is culled behind another
+			n.global_position = pos + cam.global_transform.basis.x * (float(shown.size()) - 2.5) * 1.2
+			shown.append(n)
+		for _f in HOLD_FRAMES:
+			await get_tree().process_frame
+		for n in shown:
+			n.queue_free()
+
+## A block's meshes only (no script, no body): its own materials, once plain and once as a MultiMesh.
+func _block_copy(scn: PackedScene) -> Node3D:
+	var src: Node = scn.instantiate()
+	var root := Node3D.new()
+	for c in _walk(src):
+		var mi := c as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var cp := MeshInstance3D.new()
+		cp.mesh = mi.mesh
+		cp.material_override = mi.material_override
+		for si in mi.get_surface_override_material_count():
+			cp.set_surface_override_material(si, mi.get_surface_override_material(si))
+		cp.transform = _local_to(src, mi)
+		root.add_child(cp)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mi.mesh
+		mm.instance_count = 1
+		mm.set_instance_transform(0, cp.transform.translated(Vector3.UP * 0.8))
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = mi.material_override
+		root.add_child(mmi)
+	src.free()
+	return root
+
+func _item(key: String) -> Node3D:
+	var it := ITEM_SCENE.instantiate() as RigidBody3D
+	it.freeze = true
+	it.collision_layer = 0
+	it.collision_mask = 0
+	it.process_mode = Node.PROCESS_MODE_DISABLED
+	it.ready.connect(func(): it.set_kind_key(key), CONNECT_ONE_SHOT)
+	return it
+
+## A node's transform relative to an ancestor outside the tree (global_transform needs the tree).
+func _local_to(root: Node, n: Node) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var cur: Node = n
+	while cur != null and cur != root:
+		if cur is Node3D:
+			t = (cur as Node3D).transform * t
+		cur = cur.get_parent()
+	return t
+
+func _walk(n: Node) -> Array:
+	var out: Array = [n]
+	for c in n.get_children():
+		out.append_array(_walk(c))
+	return out
