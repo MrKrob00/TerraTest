@@ -71,7 +71,7 @@ var is_station: bool = false
 # Supports were forbidden as well - self-contradictory ever since a support became a STATIONARY
 # block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
 # power, weapons - makes sense on a base.
-const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
+const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL, G.Block.MARLIT_LIGHT_WHEEL, G.Block.MARLIT_HEAVY_WHEEL,
 		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL, G.Block.AERO_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
@@ -727,7 +727,7 @@ const ENEMY_BUILDS: Dictionary = {
 	# принять ничего ни при каких условиях, и вся его добыча оставалась лежать на земле у жилы.
 	# Коллектор якоря НЕ ТРЕБУЕТ намеренно (`collector.gd`): подбирать с земли на ходу — его
 	# единственная работа. Теперь «догнать его ради груза» значит то, что написано.
-	90: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1, "front": G.Block.DRILL,
+	90: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1, "front": G.Block.DRILL,
 		"deck": [G.Block.BLOCK, G.Block.COLLECTOR]},
 	91: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3, "front": G.Block.DRILL,
 		"deck": [G.Block.BLOCK, G.Block.COLLECTOR, G.Block.BLOCK]},
@@ -740,6 +740,10 @@ const ENEMY_BUILDS: Dictionary = {
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.REGEN, G.Block.SHIELD],
 		"crown": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
+	# THE BASE RAID (quest_arcs HOLD_PRESET): preset 6's hull with the MIDDLE PAIR of wheels left off
+	# (the player's call) - four wheels, front and rear. `wheel_rows` picks the hull rows that get wheels.
+	94: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1, "wheel_rows": [0, 2],
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK]},
 }
 
 ## PLATES GO WHERE THEY PROTECT SOMETHING, and nowhere else. Armour used to line every middle cell
@@ -811,8 +815,10 @@ func _layout_enemy(preset: int) -> void:
 	elif b.get("nose", true) == true:
 		_front_armor(half, z0 - 1)
 	var zs: Array = []
+	var wheel_rows: Array = b.get("wheel_rows", [])
 	for i in rows:
-		zs.append(z0 + i)
+		if wheel_rows.is_empty() or wheel_rows.has(i):
+			zs.append(z0 + i)
 	# Колёса стоят СРАЗУ ЗА бортом: их присоединяющая грань смотрит в корпус, поэтому отступ
 	# всегда на одну клетку больше половины ширины.
 	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, half + 1)
@@ -1054,7 +1060,7 @@ func _footprint_offsets(block: int) -> Array:
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
 			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR,
-			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT,
+			G.Block.MARLIT_WHEEL, G.Block.MARLIT_LIGHT_WHEEL, G.Block.MARLIT_HEAVY_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT,
 			G.Block.MARLIT_DRILL, G.Block.MARLIT_LASER_DRILL]:
 		var cells: Array = []
 		for dx in [-1, 0]:

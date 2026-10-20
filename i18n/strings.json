@@ -5399,6 +5399,40 @@
 		"zh_CN": "Marlit 车轮",
 		"id": "Roda Marlit"
 	},
+	"Marlit Light Wheel": {
+		"ru": "Лёгкое колесо Marlit",
+		"uk": "Легке колесо Marlit",
+		"es": "Rueda ligera Marlit",
+		"pt_BR": "Roda leve Marlit",
+		"de": "Leichtes Marlit-Rad",
+		"fr": "Roue légère Marlit",
+		"tr": "Hafif Marlit tekerleği",
+		"ja": "Marlit 軽車輪",
+		"ko": "Marlit 경량 바퀴",
+		"zh_CN": "Marlit 轻型车轮",
+		"id": "Roda ringan Marlit"
+	},
+	"Marlit Heavy Wheel": {
+		"ru": "Тяжёлое колесо Marlit",
+		"uk": "Важке колесо Marlit",
+		"es": "Rueda pesada Marlit",
+		"pt_BR": "Roda pesada Marlit",
+		"de": "Schweres Marlit-Rad",
+		"fr": "Roue lourde Marlit",
+		"tr": "Ağır Marlit tekerleği",
+		"ja": "Marlit 重車輪",
+		"ko": "Marlit 중량 바퀴",
+		"zh_CN": "Marlit 重型车轮",
+		"id": "Roda berat Marlit"
+	},
+	"A light swing-axle wheel: quicker and cheaper, but pulls and carries less.": {
+		"ru": "Лёгкое колесо на качающейся полуоси: быстрее и дешевле, но тянет и везёт меньше.",
+		"uk": "Легке колесо на хитній півосі: швидше й дешевше, але тягне й везе менше."
+	},
+	"A sliding pillar on dual tyres: slow, but pulls and carries the most of any wheel.": {
+		"ru": "Выдвижная стойка на сдвоенных шинах: медленная, но тянет и везёт больше всех колёс.",
+		"uk": "Висувна стійка на здвоєних шинах: повільна, але тягне й везе найбільше з усіх коліс."
+	},
 	"Marlit Gun": {
 		"ru": "Пушка Marlit",
 		"uk": "Гармата Marlit",

@@ -596,6 +596,8 @@ const BLOCK_META := {
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 2, "rp": 50},
+	Block.MARLIT_LIGHT_WHEEL: {"f": "marlit", "g": 1, "rp": 30},
+	Block.MARLIT_HEAVY_WHEEL: {"f": "marlit", "g": 3, "rp": 80},
 	Block.MARLIT_SUPPORT:   {"f": "marlit", "g": 1, "rp": 15},
 	Block.MARLIT_ROT_SUPPORT: {"f": "marlit", "g": 3, "rp": 45},
 	Block.MARLIT_GUN:       {"f": "marlit", "g": 2, "rp": 30},
@@ -706,6 +708,7 @@ const TECH_PARENT := {
 	Block.MARLIT_REGEN: Block.MARLIT_BATTERY,
 	Block.MARLIT_SAW: Block.MARLIT_DRILL,   Block.MARLIT_LASER_DRILL: Block.MARLIT_DRILL,
 	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_DRILL,
+	Block.MARLIT_LIGHT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_HEAVY_WHEEL: Block.MARLIT_WHEEL,
 	Block.MARLIT_ROT_SUPPORT: Block.MARLIT_SUPPORT,
 	Block.MARLIT_SHOTGUN: Block.MARLIT_GUN, Block.MARLIT_CANNON: Block.MARLIT_GUN,
 	Block.MARLIT_LASER: Block.MARLIT_GUN,   Block.MARLIT_MORTAR: Block.MARLIT_CANNON,
@@ -1212,6 +1215,8 @@ const BLOCK_RECIPE := {
 	# Three Falsus units' parts: half as far again is 2.25 times the ground covered.
 	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
 	Block.MARLIT_WHEEL:     {"c16": 3, "m0": 12},
+	Block.MARLIT_LIGHT_WHEEL: {"c16": 2, "m0": 8},
+	Block.MARLIT_HEAVY_WHEEL: {"c16": 5, "m0": 20},
 	Block.MARLIT_SUPPORT:   {"c2": 4, "m1": 12},    # Braced Strut + Cuprite: the Falsus jack, twice the casting
 	Block.MARLIT_ROT_SUPPORT: {"c16": 4, "m1": 14},  # Drive Axle + Cuprite: the slewing ring and its pinions
 	Block.MARLIT_CABIN:     {"c12": 3, "c18": 3},  # Logic Housing + Control Chip, as the cabin; at 5+5 the
@@ -1792,7 +1797,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
-	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun", Block.MARLIT_DRILL: "Marlit Drill",
+	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_LIGHT_WHEEL: "Marlit Light Wheel", Block.MARLIT_HEAVY_WHEEL: "Marlit Heavy Wheel", Block.MARLIT_GUN: "Marlit Gun", Block.MARLIT_DRILL: "Marlit Drill",
 	Block.MARLIT_SAW: "Marlit Saw", Block.MARLIT_LASER_DRILL: "Marlit Laser Drill",
 	Block.MARLIT_CABIN: "Marlit Cabin",
 	Block.MARLIT_SUPPORT: "Marlit Support", Block.MARLIT_ROT_SUPPORT: "Marlit Rotating Support",
@@ -1915,6 +1920,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_SOLAR: "An armoured lid that turns over on the anchor: its underside is a solar panel as big as four ordinary ones. Driving, it is armour and makes nothing.",
 	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
 	Block.MARLIT_WHEEL: "A heavy wheel: pulls harder and carries more than any Falsus wheel.",
+	Block.MARLIT_LIGHT_WHEEL: "A light swing-axle wheel: quicker and cheaper, but pulls and carries less.",
+	Block.MARLIT_HEAVY_WHEEL: "A sliding pillar on dual tyres: slow, but pulls and carries the most of any wheel.",
 	Block.MARLIT_CABIN: "Marlit's cabin: the heart of a machine in an armoured head two cells every way. Blocks bolt on to any face.",
 	Block.MARLIT_SUPPORT: "Marlit's support: a cast jack with a ram as wide as a wheel. Anchors the machine, or stands on the ground as the core of a base.",
 	Block.MARLIT_ROT_SUPPORT: "Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.",
@@ -2502,6 +2509,8 @@ enum Block {
 	STRYX_WIRELESS = 132,
 	STRYX_SUPPORT = 133,
 	STRYX_ROT_SUPPORT = 134,
+	MARLIT_LIGHT_WHEEL = 135,   # 2×2×2 swing axle (art/marlit_wheels.py)
+	MARLIT_HEAVY_WHEEL = 136,   # 2×2×2 sliding pillar, dual tyres (art/marlit_wheels.py)
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -2565,6 +2574,8 @@ enum Block {
 @onready var marlit_solar_scene: PackedScene = preload("res://blocks/scenes/marlit_solar.tscn")
 @onready var marlit_regen_scene: PackedScene = preload("res://blocks/scenes/marlit_regen.tscn")
 @onready var marlit_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_wheel.tscn")
+@onready var marlit_light_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_light_wheel.tscn")
+@onready var marlit_heavy_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_heavy_wheel.tscn")
 @onready var marlit_gun_scene: PackedScene = preload("res://blocks/scenes/marlit_gun.tscn")
 @onready var marlit_laser_scene: PackedScene = preload("res://blocks/scenes/marlit_laser.tscn")
 @onready var marlit_shotgun_scene: PackedScene = preload("res://blocks/scenes/marlit_shotgun.tscn")
@@ -2676,7 +2687,7 @@ const BLOCK_CATEGORIES := {
 	# out of thirty-odd, and a wheel is the one part a build cannot do without. `is_wheel` is the
 	# same set and must stay so.
 	"wheels":  [Block.SMALL_WHEEL, Block.WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
-		Block.MARLIT_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL],
+		Block.MARLIT_WHEEL, Block.MARLIT_LIGHT_WHEEL, Block.MARLIT_HEAVY_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL],
 	"attack":  [Block.GUN, Block.SHOTGUN, Block.LASER, Block.ROCKET, Block.POUND_CANNON, Block.MORTAR,
 		Block.SMALL_DRILL, Block.DRILL,
 		Block.MARLIT_DRILL, Block.MARLIT_SAW, Block.MARLIT_LASER_DRILL, Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
@@ -2776,6 +2787,8 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_SOLAR: return marlit_solar_scene
 		Block.MARLIT_REGEN: return marlit_regen_scene
 		Block.MARLIT_WHEEL: return marlit_wheel_scene
+		Block.MARLIT_LIGHT_WHEEL: return marlit_light_wheel_scene
+		Block.MARLIT_HEAVY_WHEEL: return marlit_heavy_wheel_scene
 		Block.MARLIT_GUN: return marlit_gun_scene
 		Block.MARLIT_LASER: return marlit_laser_scene
 		Block.MARLIT_SHOTGUN: return marlit_shotgun_scene
@@ -2948,4 +2961,4 @@ func is_rot_support(bt) -> bool:
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
 func is_wheel(bt: int) -> bool:
 	return int(bt) in [Block.WHEEL, Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
-			Block.MARLIT_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL]
+			Block.MARLIT_WHEEL, Block.MARLIT_LIGHT_WHEEL, Block.MARLIT_HEAVY_WHEEL, Block.AERO_SMALL_WHEEL, Block.AERO_WHEEL, Block.AERO_BIG_WHEEL, Block.STRYX_SMALL_WHEEL, Block.STRYX_WHEEL, Block.STRYX_BIG_WHEEL]

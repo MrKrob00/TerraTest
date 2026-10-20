@@ -1,0 +1,58 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://blocks/scripts/marlit_heavy_wheel.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_collar.tres" id="3_collar"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_leg.tres" id="4_leg"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_tyre.tres" id="5_tyre"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_link_up.tres" id="6_lup"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wheavy_link_lo.tres" id="7_llo"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="marlit_heavy_wheel" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 23
+freeze = true
+script = ExtResource("1_scr")
+weight = 95.0
+wheel_power = 10500.0
+load_capacity = 900.0
+ride_height = 1.5
+suspension_travel = 0.34
+contact_offset = Vector3(-0.5, 0, -1.0)
+block = 136
+connect_faces = 2
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="Collar" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.08)
+mesh = ExtResource("3_collar")
+
+[node name="Leg" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.08)
+
+[node name="LegMesh" type="MeshInstance3D" parent="Leg"]
+mesh = ExtResource("4_leg")
+
+[node name="wheel" type="Node3D" parent="Leg"]
+unique_name_in_owner = true
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, -0.5, -0.92)
+
+[node name="Tyre" type="MeshInstance3D" parent="Leg/wheel"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 0)
+mesh = ExtResource("5_tyre")
+
+[node name="LinkUp" type="MeshInstance3D" parent="."]
+mesh = ExtResource("6_lup")
+
+[node name="LinkLo" type="MeshInstance3D" parent="."]
+mesh = ExtResource("7_llo")

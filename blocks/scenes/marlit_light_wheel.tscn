@@ -1,0 +1,58 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://blocks/scripts/marlit_light_wheel.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_arm.tres" id="3_arm"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_knuckle.tres" id="4_knuckle"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_tyre.tres" id="5_tyre"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_dbody.tres" id="6_dbody"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wlight_drod.tres" id="7_drod"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="marlit_light_wheel" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 23
+freeze = true
+script = ExtResource("1_scr")
+weight = 40.0
+wheel_power = 5200.0
+load_capacity = 300.0
+ride_height = 0.72
+suspension_travel = 0.22
+contact_offset = Vector3(-0.5, 0, -1.12)
+block = 135
+connect_faces = 2
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="Arm" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.1, 0.02)
+mesh = ExtResource("3_arm")
+
+[node name="Knuckle" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.1, -0.66)
+
+[node name="KnuckleMesh" type="MeshInstance3D" parent="Knuckle"]
+mesh = ExtResource("4_knuckle")
+
+[node name="wheel" type="Node3D" parent="Knuckle"]
+unique_name_in_owner = true
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 0, 0, -0.46)
+
+[node name="Tyre" type="MeshInstance3D" parent="Knuckle/wheel"]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 0)
+mesh = ExtResource("5_tyre")
+
+[node name="DBody" type="MeshInstance3D" parent="."]
+mesh = ExtResource("6_dbody")
+
+[node name="DRod" type="MeshInstance3D" parent="."]
+mesh = ExtResource("7_drod")
