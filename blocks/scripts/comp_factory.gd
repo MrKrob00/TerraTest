@@ -39,10 +39,10 @@ func wants(item: Node3D) -> bool:
 	if not _factory_active() or _need.is_empty() or not is_instance_valid(item):
 		return false
 	var kind: String = item.kind_key() if item.has_method("kind_key") else ""
-	return _need.has(kind) and (_crafting or int(_have.get(kind, 0)) < int(_need[kind]))
+	return _need.has(kind) and int(_have.get(kind, 0)) < _cap(kind)
 
 func try_receive(item: Node3D) -> bool:
-	if not _factory_active() or _crafting or _need.is_empty():
+	if not _factory_active() or _need.is_empty():
 		return false
 	if item == null or not is_instance_valid(item):
 		return false
@@ -50,11 +50,11 @@ func try_receive(item: Node3D) -> bool:
 	if not _need.has(kind):
 		return false                       # не наш материал — пусть едет дальше
 	var have: int = int(_have.get(kind, 0))
-	if have >= int(_need[kind]):
+	if have >= _cap(kind):
 		return false
 	_have[kind] = have + 1
 	item.queue_free()
-	if _recipe_full():
+	if not _crafting and _recipe_full():
 		_start_craft()
 	return true
 
@@ -64,7 +64,7 @@ func reload_recipe() -> void:
 	_need = (G.COMP_RECIPE.get(output_comp, {}) as Dictionary).duplicate()
 	for k in _have.keys():
 		if _need.has(k):
-			_have[k] = mini(int(_have[k]), int(_need[k]))
+			_have[k] = clampi(int(_have[k]), 0, _cap(k))
 		else:
 			_have.erase(k)
 
@@ -74,17 +74,30 @@ func _recipe_full() -> bool:
 			return false
 	return true
 
+## THE INTAKE HOLDS TWO RECIPES' WORTH OF EACH INPUT. It used to hold exactly one and refuse
+## everything while crafting: the belt that feeds the machine head-on then got a "no" for a third
+## ingot of a kind already counted, waited for this machine's slot_freed - and the fabricator never
+## sent one, the plant only at the end of a craft that could not start, because the other ingot was
+## queued BEHIND the refused one. So the first craft ran and the line stood for good after it.
+const BUFFER_RECIPES := 2
+
+func _cap(kind) -> int:
+	return int(_need.get(kind, 0)) * BUFFER_RECIPES
+
 func _start_craft() -> void:
 	_crafting = true
+	# The recipe is taken out at the START: whatever arrives during the craft fills the next one.
+	for k in _need:
+		_have[k] = int(_have.get(k, 0)) - int(_need[k])
+	slot_freed.emit()                  # room in the intake: a belt waiting on us offers again
 	await get_tree().create_timer(craft_time).timeout
 	if not is_instance_valid(self):
 		return
-	_have.clear()
 	_crafting = false
 	_ready_count += 1
-	# A belt holding an ingot for us (`wants` says yes while crafting) waits on this signal, and
-	# nothing else wakes it: without it the line behind the plant stood still for good.
 	slot_freed.emit()
+	if _factory_active() and _recipe_full():
+		_start_craft()                  # the next recipe is already inside
 
 # Готовое НЕ выбрасываем в мир, а ставим в очередь на ленту: пока принять некому, компонент
 # ждёт внутри. Так цепочка не роняет деталь под гусеницы, когда следующий блок занят.
