@@ -58,12 +58,24 @@ func try_receive(item: Node3D) -> bool:
 		_start_craft()
 	return true
 
+## AN ENEMY FACTORY'S OWN RECIPE (outposts.gd): its line makes one component, so it stamps its block
+## out of that alone. Empty - the block's recipe, as for the player.
+var _override: Dictionary = {}
+func set_recipe_override(need: Dictionary) -> void:
+	_override = need.duplicate()
+	_have.clear()
+	reload_recipe()
+
+## A block stamped on an enemy base lies this long, then goes: the line runs all the time and its
+## blocks would pile up round the base for good.
+const ENEMY_PRODUCT_LIFE := 20.0
+
 ## Продукт сменили (см. blocks.set_factory_output) — перечитываем рецепт. Уже набранное НЕ
 ## выбрасываем: материал того же вида, который нужен и новому рецепту, остаётся зачтённым, а
 ## лишнее подрезается по новой норме. Обнулять всё было бы проще, но это молча съело бы
 ## ресурсы, которые игрок уже отправил в цепочку.
 func reload_recipe() -> void:
-	_need = G.block_recipe(output_block).duplicate()
+	_need = G.block_recipe(output_block).duplicate() if _override.is_empty() else _override.duplicate()
 	for k in _have.keys():
 		if _need.has(k):
 			_have[k] = clampi(int(_have[k]), 0, _cap(k))
@@ -124,6 +136,13 @@ func _eject_block() -> void:
 		rb.sleeping = false
 		rb.apply_central_impulse((dir * EJECT_PUSH + Vector3.UP * EJECT_LIFT) * rb.mass)
 	BlockFX.play(inst, false)
+	var v: Node = get_parent().get_parent() if get_parent() != null else null
+	if v != null and v.get("faction") != null and int(v.get("faction")) != 0:
+		var weak: WeakRef = weakref(inst)
+		get_tree().create_timer(ENEMY_PRODUCT_LIFE).timeout.connect(func():
+			var n = weak.get_ref()
+			if n != null and is_instance_valid(n) and n.get_parent() == objects:
+				n.queue_free())
 
 # Куда выбрасывать: наружу по грани вывода. Граней несколько (противоположная сторона
 # 2×2) — берём первую, направление у них общее.

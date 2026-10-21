@@ -38,7 +38,8 @@ var _spin: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true
-	add_to_group("sellers")        # the quest compass leads a "sell" quest to the nearest one
+	if _ours():
+		add_to_group("sellers")    # the quest compass leads a "sell" quest to the nearest one (ours)
 	_anim = get_node_or_null("Anim") as AnimationPlayer
 	super._ready()
 
@@ -78,7 +79,12 @@ func _on_timer_timeout() -> void:
 	if kind.begins_with("chunk:") and "chunk_count" in current_item:
 		price *= maxi(int(current_item.get("chunk_count")), 0)
 
-	if G.has_method("add_money"):
+	# AN ENEMY'S SELLER PAYS NOBODY: an enemy factory runs its line for show and for itself, and the
+	# player's money and sale counts come only from a seller on the player's own side.
+	if not _ours():
+		price = 0
+		kind = ""
+	if price > 0 and G.has_method("add_money"):
 		G.add_money(price)
 	# THE CONTRACT IS COUNTED HERE, at the seller: only it knows the material really went for money.
 	# Counting by storage would be wrong - ore can be collected and just carried about - while a
@@ -86,7 +92,8 @@ func _on_timer_timeout() -> void:
 	# it holds BLOCKS, and orders are for materials.
 	if kind != "" and not kind.begins_with("chunk:"):
 		Q.report("sold_" + kind, 1)
-	Q.report("item_sold", 1)                       # Marlit's market count: anything sold
+	if _ours():
+		Q.report("item_sold", 1)                   # Marlit's market count: anything sold
 	if price > 0:
 		if is_instance_valid(_popup) and _popup.can_merge():
 			_popup.add(price)
@@ -108,3 +115,10 @@ func _on_timer_timeout() -> void:
 	current_item.queue_free()
 	current_item = null
 	slot_freed.emit()
+
+## On the player's side: the machine this seller stands on is faction 0 (or has no faction - a
+## loose seller in the world is no one's and sells for the player as before).
+func _ours() -> bool:
+	var p: Node = get_parent()
+	var v: Node = p.get_parent() if p != null else null
+	return v == null or v.get("faction") == null or int(v.get("faction")) == 0

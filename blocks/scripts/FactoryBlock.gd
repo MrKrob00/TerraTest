@@ -156,7 +156,8 @@ func _factory_active() -> bool:
 	var vehicle := p.get_parent()
 	# == true, а не bool(): у машины без поля anchored (враги его не имеют) get() вернёт null,
 	# а bool(null) роняет вызов в рантайме.
-	return vehicle != null and vehicle.get("anchored") == true
+	# An enemy BASE (is_base) is anchored by nature and has no anchor field: its factory runs too.
+	return vehicle != null and (vehicle.get("anchored") == true or vehicle.get("is_base") == true)
 
 ## ГОТОВ ЛИ ПРИНЯТЬ ЕЩЁ ОДИН ПРЕДМЕТ. Спрашивают СНАРУЖИ, до того как отдавать (так авто-шахтёр
 ## выбирает, кому вручить добычу). У обычного блока ответ — «ячейка пуста», но у станка с

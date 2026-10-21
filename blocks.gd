@@ -228,7 +228,61 @@ func _define_layout() -> void:
 		STRYX_TROOPER: _layout_stryx_trooper()
 		STRYX_HEAVY: _layout_stryx_heavy()
 		SPIDER_KING: _layout_spider_king()
+		FACTORY_BASIC: _layout_enemy_factory(0)
+		FACTORY_COMP: _layout_enemy_factory(1)
+		FACTORY_FAB: _layout_enemy_factory(2)
 		_: _layout_default()
+
+## THE TWO LINES MEET AT THE PLANT'S BACK, side by side, so they must not feed each other: line A's
+## smelter would put ingots out of its front onto line B's last belt as well, and the two last belts
+## would trade loads sideways - one full kind then stood on line B's belt and stopped it for good.
+## Those sides are made inputs (or nothing), then the chain is linked.
+func _factory_ports() -> void:
+	if layout_preset != FACTORY_BASIC:
+		var a = find_block(5, 5, 5)
+		var b = find_block(4, 5, 5)
+		var sm = find_block(4, 5, 7)
+		if a is FactoryBlock:
+			(a as FactoryBlock).set_port(Vector3i.ZERO, 2, FactoryBlock.PORT_IN)
+		if b is FactoryBlock:
+			(b as FactoryBlock).set_port(Vector3i.ZERO, 3, FactoryBlock.PORT_IN)
+		if sm is FactoryBlock:
+			(sm as FactoryBlock).set_port(Vector3i(0, 0, -1), 0, FactoryBlock.PORT_NONE)
+	rebuild_factory_links()
+
+func _layout_enemy_factory(kind: int) -> void:
+	var B = G.Block
+	var end_block: int = B.FABRICATOR if kind == 2 else B.SELLER
+	set_block(5, 5, 1, end_block, 0.0)                     # x 4..5, z 0..1
+	# line A (x 5)
+	set_block(5, 5, 10, B.AUTO_MINER, 0.0)                 # z 9..10, hands on from its front
+	set_block(5, 5, 8, B.RECEIVER, 0.0)
+	set_block(4, 5, 7, B.PROCESSOR, 0.0)                   # x 3..4, z 6..7: in at z 7, out at z 6
+	for z in [7, 6, 5]:
+		set_block(5, 5, z, B.BELT, 0.0)
+	if kind == 0:
+		for z in [4, 3, 2]:
+			set_block(5, 5, z, B.BELT, 0.0)
+		set_block(6, 5, 9, B.SOLAR, 0.0)
+		set_block(6, 5, 8, B.SOLAR, 0.0)
+		return
+	set_block(5, 5, 4, B.COMP_FACTORY, 0.0)                # x 4..5, z 3..4: in at z 4 (both), out at x 5
+	set_block(5, 5, 2, B.BELT, 0.0)
+	# line B (x 2), turned in along z 5 to the plant's other back cell
+	set_block(2, 5, 10, B.AUTO_MINER, 0.0)
+	set_block(2, 5, 8, B.RECEIVER, 0.0)
+	set_block(1, 5, 7, B.PROCESSOR, 0.0)                   # x 0..1, z 6..7
+	for z in [7, 6]:
+		set_block(2, 5, z, B.BELT, 0.0)
+	set_block(2, 5, 5, B.BELT, -PI / 2)                    # facing +X
+	set_block(3, 5, 5, B.BELT, -PI / 2)
+	set_block(4, 5, 5, B.BELT, 0.0)
+	# power and pickup beside line A
+	set_block(6, 5, 9, B.SOLAR, 0.0)
+	set_block(6, 5, 8, B.SOLAR, 0.0)
+	set_block(6, 5, 7, B.BATTERY, 0.0)
+	set_block(6, 5, 6, B.COLLECTOR, 0.0)
+	set_block(3, 5, 8, B.COLLECTOR, 0.0)
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
 ## Outside the ladder on purpose (enemy_spawner._tier_of answers -1, so no ceiling touches it): the
@@ -308,6 +362,20 @@ const AERO_WRECK := 129
 const STRYX_TROOPER := 130
 const STRYX_HEAVY := 131
 const SPIDER_KING := 132
+
+## ENEMY FACTORIES (outposts.gd lays them, rarely): a working chain the enemy runs for itself, its
+## seller paying nobody (seller.gd). All yaw 0 and flowing -Z, on the line the arc_line quest proved:
+## a belt column with the smelter on its LEFT (its right side is the exchange). The miners stand at
+## z 9..10, their veins behind them (+Z) - outposts places the base so that is where the veins are.
+##   basic: miner > receiver > belt > smelter > belt > seller
+##   comp:  two such lines (x 5 and x 2, the second turned in at z 5) into one component plant
+##          (its two back cells), then a belt to the seller; battery, two panels, two collectors
+##   fab:   the same with a fabricator in place of the seller
+const FACTORY_BASIC := 133
+const FACTORY_COMP := 134
+const FACTORY_FAB := 135
+## Where the miners stand (anchor cells), read by outposts to put the veins behind them.
+const FACTORY_MINERS := [Vector3i(5, 5, 10), Vector3i(2, 5, 10)]
 
 func _layout_aero_runner(wheels: bool) -> void:
 	set_block(5, 5, 5, G.Block.AERO_CABIN, 0.0)
@@ -1026,6 +1094,10 @@ func _spawn_all() -> void:
 	# anchor cells only, or a multi-cell block spawns eight times
 	for c in _anchors_sorted():
 		spawn_block(int(map[c]), c.x, c.y, c.z)
+	# a built-in factory (an enemy factory base) links its chain once its blocks are in place:
+	# spawn_block waits a frame for the body, so the links are counted a moment later
+	if layout_preset in [FACTORY_BASIC, FACTORY_COMP, FACTORY_FAB] and is_inside_tree():
+		get_tree().create_timer(0.5).timeout.connect(_factory_ports)
 
 # True if (x,y,z) is its block's anchor cell (always true for single-cell blocks).
 func _is_anchor(x: int, y: int, z: int) -> bool:
