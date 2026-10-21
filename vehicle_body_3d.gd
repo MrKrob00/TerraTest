@@ -647,37 +647,44 @@ func disassemble() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	# THE CORE GOES TOO, unless this is the machine in hand: a cabin or a base's core left standing
+	# was a machine of one block nobody could do anything with. The driven machine keeps its cabin,
+	# as before - without it there is nothing to drive.
+	var whole: bool = cc == null or not ("current_vehicle" in cc) or cc.current_vehicle != self
 	for b in block_map_node.get_children():
-		if not ("block" in b) or G.is_cabin(b.get("block")):
+		if not ("block" in b):
 			continue
-		# Ядро СТАНЦИИ (первый стационарный блок, напр. SELLER) — как кабина у машины: остаётся
-		# на якоре и НЕ выпадает. Пропускаем ДО remove_block/коллизии/reparent, чтобы клетки
-		# карты, коллизия и сам узел ядра сохранились и база продолжала стоять. SELLER 2×2×2 —
-		# один якорный узел, так что пропуска узла хватает на все 8 клеток. Спрашиваем именно
-		# ЯДРО, а не «любой стационарный»: на базе их бывает несколько (шахтёр рядом с
-		# продавцом), и остальные — обычный груз, они обязаны выпасть; а мобильная машина
-		# стационарный блок ВЕЗЁТ, и висеть в воздухе после разбора ему тем более незачем.
-		if is_core_block(b):
+		if not whole and (G.is_cabin(b.get("block")) or is_core_block(b)):
 			continue
-		if b is Node3D:
-			var n3 := b as Node3D
-			# Чистим клетку карты и коллизию блока на корпусе.
-			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y + 5), roundi(n3.position.z + 5))
-			if block_map_node.has_method("remove_block"):
-				block_map_node.remove_block(cell.x, cell.y, cell.z)
-			# Коллизию блока ищем ЯРЛЫКОМ (его ставят оба пути постановки), и только потом по
-			# координате: смещений у крупных блоков теперь несколько, и они поворачиваются вместе
-			# с блоком, так что одна зашитая поправка 2×2×2 промахивалась бы мимо остальных.
-			for col in get_children():
-				if not (col is CollisionShape3D and col.is_in_group("block_collision")):
-					continue
-				var tag: Variant = col.get_meta("block_owner") if col.has_meta("block_owner") else null
-				var mine: bool = (tag == b) if tag != null else (col.position == n3.position \
-						or col.position == n3.position + BIG_BLOCK_COL_OFFSET)
-				if mine:
-					col.queue_free()
-			n3.reparent(objects)
+		_drop_block(b, objects)
 	Wheels.clear()
+	if whole:
+		if cc != null and "vehicles" in cc:
+			cc.vehicles.erase(self)
+		queue_free()
+		return
+
+## One block off the hull into the world: its map cell, its collision on the body, then the node.
+func _drop_block(b: Node, objects: Node) -> void:
+	if b is Node3D:
+		var n3 := b as Node3D
+		# Чистим клетку карты и коллизию блока на корпусе.
+		var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y + 5), roundi(n3.position.z + 5))
+		if block_map_node.has_method("remove_block"):
+			block_map_node.remove_block(cell.x, cell.y, cell.z)
+		# Коллизию блока ищем ЯРЛЫКОМ (его ставят оба пути постановки), и только потом по
+		# координате: смещений у крупных блоков теперь несколько, и они поворачиваются вместе
+		# с блоком, так что одна зашитая поправка 2×2×2 промахивалась бы мимо остальных.
+		for col in get_children():
+			if not (col is CollisionShape3D and col.is_in_group("block_collision")):
+				continue
+			var tag: Variant = col.get_meta("block_owner") if col.has_meta("block_owner") else null
+			var mine: bool = (tag == b) if tag != null else (col.position == n3.position \
+					or col.position == n3.position + BIG_BLOCK_COL_OFFSET)
+			if mine:
+				col.queue_free()
+		n3.reparent(objects)
 
 # Защита вкл/выкл. Управление игроком выключает её (set_active).
 func set_defense(on: bool) -> void:
