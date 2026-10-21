@@ -81,6 +81,13 @@ func _physics_process(delta: float) -> void:
 	if _t > 0.0:
 		return
 	_t = mine_interval
+	# THE VEIN IS LOOKED FOR FIRST AND ON ITS OWN BEAT. The search used to run only after the
+	# "where does the ore go" gate, and its 1 s retry counter was fed the PHYSICS delta (1/60 s)
+	# once per 2 s cycle - one scan every ~2 minutes. A miner put down by a vein sat idle (and drew
+	# no line) until a scan finally came round, which looked like "it starts after I broke ore".
+	var vein: Node3D = _find_vein(mine_interval)
+	if vein == null:
+		_t = VEIN_RESCAN                  # nothing yet (or the vein field still streaming in): soon again
 
 	# 1. Куда девать руду. Приёмника нет — кладём на землю, но не бесконечно (см. шапку).
 	var target: FactoryBlock = _free_target()
@@ -90,7 +97,6 @@ func _physics_process(delta: float) -> void:
 		return
 	# 2. The vein, BEFORE the energy. Paying first meant a miner with no spent vein in reach (or
 	# one taken by a neighbour) was billed every cycle for ore it never dug.
-	var vein: Node3D = _find_vein(delta)
 	if vein == null or not vein.has_method("mine_for_claimer"):
 		_set_rig(false)
 		return
@@ -169,6 +175,8 @@ func _say_no_power(v: Node) -> void:
 # СТРИМИТСЯ — далёкая жила её не держит, и шахтёр за спиной игрока переставал её видеть.
 # Перебор идёт по тому же списку и тем же радиусом, что проверка при постановке
 # (vehicle_body_3d._vein_near): правило «дотягивается до жилы» должно быть одно.
+const VEIN_RESCAN := 0.5
+
 func _find_vein(delta: float) -> Node3D:
 	if is_instance_valid(_vein):
 		return _vein
