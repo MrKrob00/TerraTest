@@ -63,17 +63,33 @@ func claim(by: Node) -> bool:
 	if by == null:
 		return false
 	if claimed_by != null and is_instance_valid(claimed_by) and claimed_by != by:
-		return false
+		return shares_claim(by)            # a miner of the SAME machine digs alongside
 	claimed_by = by
 	return true
+
+## Miners on one machine share its vein: three on a rig by one vein used to leave two idle (the
+## first claimed, the rest found nothing free). A different machine still may not.
+func shares_claim(by: Node) -> bool:
+	if by == null or claimed_by == null or not is_instance_valid(claimed_by):
+		return false
+	return by == claimed_by or (by.get_parent() != null and by.get_parent() == claimed_by.get_parent())
 
 func release(by: Node) -> void:
 	if claimed_by == by:
 		claimed_by = null
+		# hand it to a sibling still digging it, so its claim is not lost under it
+		var p: Node = by.get_parent() if is_instance_valid(by) else null
+		if p != null:
+			for b in p.get_children():
+				if b != by and b.get("_vein") == self:
+					claimed_by = b
+					break
 
 ## One ore for the miner that holds the vein, out of the same store a drill digs.
 func mine_for_claimer(by: Node) -> bool:
-	if claimed_by != by or is_wood or is_depleted():
+	if claimed_by == null or not is_instance_valid(claimed_by):
+		claimed_by = by                    # its holder left: whoever still digs it takes it
+	if not (claimed_by == by or shares_claim(by)) or is_wood or is_depleted():
 		return false
 	_eject_one()
 	_available -= 1

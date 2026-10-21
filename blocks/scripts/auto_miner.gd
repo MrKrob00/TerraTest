@@ -77,10 +77,16 @@ func _physics_process(delta: float) -> void:
 	if not _factory_active():
 		_set_rig(false)
 		return
+	# A cycle that did not dig (no energy yet, nowhere to put ore, vein busy) comes round again in
+	# RETRY_SOON, not a whole mine_interval: three miners sharing a battery each met a store the
+	# others had just drained and waited 2 s more, so first digs came seconds late.
+	if _t > RETRY_SOON and not _dug_last:
+		_t = RETRY_SOON
 	_t -= delta
 	if _t > 0.0:
 		return
 	_t = mine_interval
+	_dug_last = false
 	# THE VEIN IS LOOKED FOR FIRST AND ON ITS OWN BEAT. The search used to run only after the
 	# "where does the ore go" gate, and its 1 s retry counter was fed the PHYSICS delta (1/60 s)
 	# once per 2 s cycle - one scan every ~2 minutes. A miner put down by a vein sat idle (and drew
@@ -112,6 +118,7 @@ func _physics_process(delta: float) -> void:
 		_set_rig(false)
 		return                            # жилу занял кто-то другой или она вдруг ожила
 	_pay_energy()
+	_dug_last = true
 	# Цикл прошёл целиком — качалка ходит (если есть кому на неё смотреть).
 	_set_rig(_seen_by_player())
 	if target == null:
@@ -176,11 +183,35 @@ func _say_no_power(v: Node) -> void:
 # Перебор идёт по тому же списку и тем же радиусом, что проверка при постановке
 # (vehicle_body_3d._vein_near): правило «дотягивается до жилы» должно быть одно.
 const VEIN_RESCAN := 0.5
+const RETRY_SOON := 0.25
+var _dug_last: bool = false
+
+## STILL OURS? Checked every cycle against where the miner stands NOW: a miner moved to another
+## spot or machine, a machine rebuilt over the vein, a vein left out of reach - it used to keep
+## digging the vein it first claimed, from anywhere. Not ours any more: let it go and look again.
+func _vein_still_ok() -> bool:
+	if not is_instance_valid(_vein) or not _vein.is_inside_tree():
+		return false
+	if global_position.distance_squared_to(_vein.global_position) > vein_reach * vein_reach:
+		return false
+	if _covered(_vein):
+		return false
+	var by = _vein.get("claimed_by")
+	if by != self and not (_vein.has_method("shares_claim") and _vein.shares_claim(self)):
+		return false
+	return true
+
+func _drop_vein() -> void:
+	if is_instance_valid(_vein) and _vein.has_method("release"):
+		_vein.release(self)
+	_vein = null
+	_vein_retry = 0.0
 
 func _find_vein(delta: float) -> Node3D:
-	if is_instance_valid(_vein):
-		return _vein
-	_vein = null                          # жила исчезла (стриминг) — займём заново, когда вернётся
+	if _vein != null:
+		if _vein_still_ok():
+			return _vein
+		_drop_vein()                          # жила исчезла (стриминг) — займём заново, когда вернётся
 	_vein_retry -= delta
 	if _vein_retry > 0.0:
 		return null
@@ -198,7 +229,8 @@ func _find_vein(delta: float) -> Node3D:
 		if c.get("is_wood") == true:
 			continue
 		var owner_now = c.get("claimed_by")
-		if owner_now != null and is_instance_valid(owner_now) and owner_now != self:
+		if owner_now != null and is_instance_valid(owner_now) and owner_now != self \
+				and not (c.has_method("shares_claim") and c.shares_claim(self)):
 			continue
 		var d: float = global_position.distance_squared_to((c as Node3D).global_position)
 		if d < best_d and not _covered(c as Node3D):
@@ -255,9 +287,11 @@ func _seen_by_player() -> bool:
 ## Блока не стало (снесли, взорвали, разобрали базу) — жила снова свободна и начинает отдых.
 ## Через NOTIFICATION_PREDELETE, а не tree_exiting: блок ВРЕМЕННО выходит из дерева при
 ## переносе на другую машину, и отпускать жилу на этом не нужно.
+## Leaving the tree (moved, re-placed, machine rebuilt) lets it go too: it is looked for again from
+## the new spot, and the same vein is taken back if it is still in reach.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE and is_instance_valid(_vein) and _vein.has_method("release"):
-		_vein.release(self)
+	if (what == NOTIFICATION_PREDELETE or what == NOTIFICATION_EXIT_TREE) and _vein != null:
+		_drop_vein()
 
 func _vehicle() -> Node:
 	var p: Node = get_parent()
