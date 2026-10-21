@@ -2077,7 +2077,7 @@ func _rebuild_vehicle_list() -> void:
 			continue
 		i += 1
 		var is_cur: bool = (v == cur)
-		var label: String = ("• " if is_cur else "  ") + (str(v.name) if str(v.name) == "Player" else EnemyMarker.name_of(v))   # "•" is in the font, "●" is not
+		var label: String = ("• " if is_cur else "  ") + (str(v.name) if str(v.name) == "Player" else EnemyMarker.name_of(v, true))   # "•" is in the font, "●" is not
 		var btn := _make_drawer_button(label, _select_vehicle.bind(v))
 		if is_cur:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.65, 0.2, 1))  # текущая — оранжевым

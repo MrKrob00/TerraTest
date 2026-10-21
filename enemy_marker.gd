@@ -79,10 +79,11 @@ static func name_for(id: int) -> String:
 ## A machine's name: one a quest gave it (meta `display_name`, "Cleanup Crew"), else the ENGLISH name
 ## of its core block ("Marlit Cabin" - the way the player's own is "Player"), else the generator's
 ## while its blocks are not built yet.
-static func name_of(v: Object) -> String:
+static func name_of(v: Object, own: bool = false) -> String:
 	if v != null and v.has_meta("display_name"):
 		return TranslationServer.translate(String(v.get_meta("display_name")))
-	var core: String = core_name(v)
+	# only the PLAYER'S machines are named by their cabin; everyone else keeps the generator's name
+	var core: String = core_name(v) if own else ""
 	if core != "":
 		return core
 	return name_for(int(v.get_instance_id()) if v != null else 0)
@@ -128,7 +129,7 @@ func _ready() -> void:
 	_diamond(PIN_OUTLINE, Color(0, 0, 0, 0.85), 0)
 	_pin = _diamond(PIN_DIAG, COL, 1)
 	_pin_mat = _pin.material_override as StandardMaterial3D
-	_name = _label(name_of(vehicle) if vehicle else name_for(get_instance_id()),
+	_name = _label(name_of(vehicle, friendly) if vehicle else name_for(get_instance_id()),
 			64, -0.55)
 	_build_plate()
 
@@ -253,11 +254,11 @@ func _tick_marker(delta: float) -> void:
 	if not visible:
 		return
 	# the name settles once the blocks are built (the marker is made before them)
-	if live and not vehicle.has_meta("core_name") and not vehicle.has_meta("display_name"):
+	if friendly and live and not vehicle.has_meta("core_name") and not vehicle.has_meta("display_name"):
 		_name_t -= delta
 		if _name_t <= 0.0:
 			_name_t = 1.0
-			var nm: String = name_of(vehicle)
+			var nm: String = name_of(vehicle, true)
 			if nm != _name.text:
 				_name.text = nm
 				_rebuild_plate()
