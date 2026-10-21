@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://ukrnp1ma8w2v"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_wlight_texture.png" id="1_ce6f2"]
+[ext_resource type="Texture2D" uid="uid://cau50to1yvgfi" path="res://objects/marlit_wlight_texture.png" id="1_ce6f2"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sbuks"]
 resource_name = "marlit_wlight"

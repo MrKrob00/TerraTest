@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://bqtgrcrh61d4w"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_wheavy_texture.png" id="1_xwqky"]
+[ext_resource type="Texture2D" uid="uid://bayepr3ao7y4a" path="res://objects/marlit_wheavy_texture.png" id="1_xwqky"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_y7t00"]
 resource_name = "marlit_wheavy"
