@@ -29,6 +29,14 @@ const LIFT := 0.04                    # over the grass lift, as the ground marks
 
 ## The pickup zone whose sphere is drawn.
 var area: Area3D = null
+## OR a plain reach round a node (the auto-miner has no zone, only `vein_reach`).
+var centre: Node3D = null
+var radius: float = 0.0
+## Ring colour; alpha 0 keeps the shader's own (the receiver's blue).
+var tint := Color(0, 0, 0, 0)
+## Optional: returns the Node3D this block is working (the miner's vein) - a line is drawn to it.
+var link: Callable
+var _line: MeshInstance3D = null
 ## Whether the ring is wanted now (on a machine, working); called every frame.
 var active: Callable
 
@@ -37,17 +45,24 @@ var _ok: bool = false                 # the last read found ground in reach
 var _t: float = 0.0
 var _at := Vector3(1e9, 1e9, 1e9)
 
+func _src() -> Node3D:
+	return area if is_instance_valid(area) else centre
+
 func _process(delta: float) -> void:
-	var show: bool = is_instance_valid(area) and area.is_inside_tree() and active.is_valid() and active.call()
+	var src: Node3D = _src()
+	var show: bool = is_instance_valid(src) and src.is_inside_tree() and active.is_valid() and active.call()
 	if show:
 		var cam: Camera3D = get_viewport().get_camera_3d()
-		show = cam != null and cam.global_position.distance_squared_to(area.global_position) \
+		show = cam != null and cam.global_position.distance_squared_to(src.global_position) \
 				<= SHOW_DIST * SHOW_DIST
 	if not show:
 		if is_instance_valid(_ring):
 			_ring.visible = false
+		if is_instance_valid(_line):
+			_line.visible = false
 		return
-	var p: Vector3 = area.global_position
+	var p: Vector3 = src.global_position
+	_draw_link(p)
 	var moved: bool = p.distance_squared_to(_at) > MOVE2
 	_t -= delta
 	if not is_instance_valid(_ring) or (_t <= 0.0 and moved) or _t <= -IDLE:
@@ -106,6 +121,8 @@ func _build(p: Vector3) -> void:
 	_ring.visible = true
 
 func _radius() -> float:
+	if not is_instance_valid(area):
+		return radius
 	for c in area.get_children():
 		if c is CollisionShape3D and (c as CollisionShape3D).shape is SphereShape3D:
 			return ((c as CollisionShape3D).shape as SphereShape3D).radius
@@ -119,6 +136,8 @@ func _make() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER
 	mat.set_shader_parameter("dashes", DASHES)
+	if tint.a > 0.0:
+		mat.set_shader_parameter("color", tint)
 	_ring.material_override = mat
 	add_child(_ring)
 
@@ -139,3 +158,32 @@ func _ground_reach(p: Vector3, dir: Vector2, reach: float, guess: float) -> Vect
 		if dir == Vector2.ZERO:
 			break
 	return Vector2(r, y)
+
+## A straight line from the block to what it works (link), redrawn every frame - it is two points.
+func _draw_link(p: Vector3) -> void:
+	var to: Node3D = link.call() as Node3D if link.is_valid() else null
+	if not is_instance_valid(to):
+		if is_instance_valid(_line):
+			_line.visible = false
+		return
+	if not is_instance_valid(_line):
+		_line = MeshInstance3D.new()
+		_line.top_level = true
+		_line.set_meta("block_fx", true)
+		_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_line.mesh = ImmediateMesh.new()
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_color = tint if tint.a > 0.0 else Color(0.12, 0.78, 1.0, 0.9)
+		m.no_depth_test = true
+		_line.material_override = m
+		add_child(_line)
+	_line.global_transform = Transform3D.IDENTITY
+	var im := _line.mesh as ImmediateMesh
+	im.clear_surfaces()
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	im.surface_add_vertex(p)
+	im.surface_add_vertex(to.global_position + Vector3(0, 0.3, 0))
+	im.surface_end()
+	_line.visible = true

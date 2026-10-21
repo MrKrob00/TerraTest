@@ -52,6 +52,25 @@ const GROUND_LIMIT := 6
 
 var _t: float = 0.0
 var _vein: Node3D = null
+
+## THE REACH ON THE GROUND (reach_ring.gd, as the receiver's) in amber, and a line to the vein it
+## mines once it has one. Shown where the receiver's is: on a machine.
+const REACH_RING := preload("res://blocks/scripts/reach_ring.gd")
+const RING_TINT := Color(1.0, 0.68, 0.12, 0.9)
+
+func _ready() -> void:
+	super._ready()
+	var ring := REACH_RING.new()
+	ring.name = "ReachRing"
+	ring.centre = self
+	ring.radius = vein_reach
+	ring.tint = RING_TINT
+	ring.active = _ring_wanted
+	ring.link = func(): return _vein if is_instance_valid(_vein) else null
+	add_child(ring)
+
+func _ring_wanted() -> bool:
+	return get_parent() != null and get_parent().name == "blocks"
 var _vein_retry: float = 0.0
 
 func _physics_process(delta: float) -> void:
