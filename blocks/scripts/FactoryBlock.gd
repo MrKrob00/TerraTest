@@ -146,6 +146,12 @@ func _ready() -> void:
 	super._ready()
 
 
+## WORKS ON THE MOVE: the transport and storage blocks (belts, receiver, storage) and the generator
+## run on a machine that drives; the machines that MAKE something (smelter, plant, fabricator,
+## seller...) still want the anchor. A subclass says yes for itself.
+func works_mobile() -> bool:
+	return false
+
 # Фабрика работает ТОЛЬКО под якорем: машина должна стоять заякоренной. Исключение —
 # коллектор (он не в этой цепочке): подбирает с земли всегда, а вот передача дальше
 # (приёмник забирает у него и пушит по цепочке) уже гейтится этим условием.
@@ -153,6 +159,8 @@ func _factory_active() -> bool:
 	var p := get_parent()
 	if p == null or p.name != "blocks":
 		return false                      # блок валяется в мире — фабрика не работает
+	if works_mobile():
+		return true                       # on a machine, moving or not
 	var vehicle := p.get_parent()
 	# == true, а не bool(): у машины без поля anchored (враги его не имеют) get() вернёт null,
 	# а bool(null) роняет вызов в рантайме.
@@ -212,13 +220,16 @@ func _try_push() -> void:
 		return
 	if push_item(current_item):
 		current_item = null
-		waiting_for_next = false
+		_clear_wait()
 		_push_pending = false
 		slot_freed.emit()
 		return
 	# Никто не принял. Ждём, когда освободится первый занятый приёмник...
 	var wait_on := _first_valid_target()
+	if wait_on != _wait_on:
+		_clear_wait()                     # a stale subscription would fire into a LATER item
 	if wait_on != null and not waiting_for_next:
+		_clear_wait()
 		waiting_for_next = true
 		_wait_on = wait_on
 		wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
@@ -273,10 +284,11 @@ func push_retry_tick(delta: float) -> void:
 	# «ЖДУ СИГНАЛА» ЧТО-ТО ЗНАЧИТ, ТОЛЬКО ПОКА ПОДПИСКА ЖИВА. Приёмник могли сбить вместе с
 	# половиной линии — тогда waiting_for_next означает «жду никогда», и блок стоит с готовым
 	# грузом до конца игры, а линия за ним стоит вместе с ним.
-	if waiting_for_next:
-		if _wait_on != null and is_instance_valid(_wait_on) \
-				and _wait_on.slot_freed.is_connected(_on_next_block_freed):
-			return
+	# JAM FIX: the signal is only a fast path. Retry on the timer EVEN WHILE SUBSCRIBED: a receiver
+	# that frees space without emitting slot_freed (storage drained by its own output, a target
+	# swapped in a rebuild) left the block waiting forever with goods and a free output.
+	if waiting_for_next and not (_wait_on != null and is_instance_valid(_wait_on) \
+			and _wait_on.slot_freed.is_connected(_on_next_block_freed)):
 		waiting_for_next = false
 	_retry_t -= delta
 	if _retry_t > 0.0:
@@ -314,6 +326,16 @@ func _first_valid_target() -> FactoryBlock:
 func holds_for(belt: Node) -> bool:
 	return current_item != null and waiting_for_next and next_blocks.has(belt)
 
+## Drops the one-shot subscription. Left connected after a timer retry succeeded, it fired later
+## into a NEW item mid-animation and "already connected" errors piled up.
+func _clear_wait() -> void:
+	if _wait_on != null and is_instance_valid(_wait_on) \
+			and _wait_on.slot_freed.is_connected(_on_next_block_freed):
+		_wait_on.slot_freed.disconnect(_on_next_block_freed)
+	_wait_on = null
+	waiting_for_next = false
+
 func _on_next_block_freed() -> void:
+	_wait_on = null
 	waiting_for_next = false
 	_try_push()

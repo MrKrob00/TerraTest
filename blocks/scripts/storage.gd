@@ -1,5 +1,10 @@
 extends FactoryBlock
 
+## Runs on the move as well (FactoryBlock.works_mobile).
+func works_mobile() -> bool:
+	return true
+
+
 # СКЛАД. Принимает ОДИН ВИД материала и держит до CAPACITY штук. Все четыре горизонтальные
 # грани работают и на вход, и на выход — что именно окажется входом, решает то, с какой
 # стороны подвели конвейер.
@@ -108,6 +113,7 @@ func _physics_process(delta: float) -> void:
 		if count == 0:
 			stored_kind = ""               # опустел — примет любой вид
 		_refresh_visual()
+		slot_freed.emit()                  # wake whoever waits on this silo (it never did: jam)
 	else:
 		item.queue_free()                  # никто не принял — не плодим тела в мире
 

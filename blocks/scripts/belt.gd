@@ -1,5 +1,10 @@
 # belt.gd
 extends FactoryBlock
+
+## Runs on the move as well (FactoryBlock.works_mobile).
+func works_mobile() -> bool:
+	return true
+
 #
 # ЛЕНТА ОТДАЁТ И ВБОК — СТАНКУ, СТОЯЩЕМУ РЯДОМ С ЛИНИЕЙ (output_faces в сцене: вперёд + оба
 # борта). Так собирают фабрику в TerraTech: конвейер идёт своей полосой, а процессор,
@@ -29,9 +34,15 @@ func _ready() -> void:
 	timer.timeout.connect(_on_timer_timeout)
 	add_child(timer)
 
-func _on_item_received() -> void:
+## The hand-on clock starts HERE, not on the slide tween's `finished`: that tween dies silently
+## when its item is taken away or freed mid-slide (a silo frees it on receipt), the timer never
+## started, and the belt sat on its next item forever - the "silos jam after a while" bug.
+func try_receive(item: Node3D) -> bool:
+	if not super.try_receive(item):
+		return false
 	timer.stop()
-	timer.start()
+	timer.start(belt_speed)
+	return true
 
 ## Соседние ленты по БОРТУ из целей выкидываем (см. шапку). Прямо (по −Z) лента ленте отдаёт
 ## как и раньше — на это вся линия и держится.
@@ -138,7 +149,4 @@ func _on_timer_timeout() -> void:
 	_try_push()
 	# trying again 
 	if current_item != null:
-		timer.wait_time = 0.1
-		timer.start()
-	else:
-		timer.wait_time = belt_speed
+		timer.start(0.1)

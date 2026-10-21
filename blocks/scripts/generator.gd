@@ -1,7 +1,12 @@
 # generator.gd - a factory block: takes fuel off the chain (belt / receiver), burns it for BURN_TIME
 # seconds and hands the energy to the machine (ore gives less, an ingot more). Like the whole
-# factory it works only while anchored: off the anchor the burn is paused.
+# factory it used to work only while anchored; now it is a MOBILE generator (works_mobile).
 extends FactoryBlock
+
+## Runs on the move as well (FactoryBlock.works_mobile).
+func works_mobile() -> bool:
+	return true
+
 
 const BURN_TIME := 3.0
 ## Energy per load, scaled with the panels when the energy scale grew (SOLAR_RATE 6 -> 80, x40/3):
@@ -132,7 +137,7 @@ func _physics_process(delta: float) -> void:
 	if _burn_left <= 0.0 or current_item == null:
 		return
 	if not _factory_active():
-		return                            # off the anchor the burn is paused
+		return                            # off a machine the burn is paused
 	_burn_left -= delta
 	if _burn_left > 0.0:
 		return

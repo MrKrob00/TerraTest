@@ -1,5 +1,10 @@
 # Receiver.gd
 extends FactoryBlock
+
+## Runs on the move as well (FactoryBlock.works_mobile).
+func works_mobile() -> bool:
+	return true
+
 # ПРИЁМНИК — универсальный вход цепочки, но ТОЛЬКО НА ЯКОРЕ.
 #
 # Берёт из двух источников: МАТЕРИАЛЫ с земли (что лежит в его зоне) и добычу из КОЛЛЕКТОРОВ
@@ -178,6 +183,7 @@ func _push_from_inventory() -> void:
 			wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
 
 func _on_next_block_freed() -> void:
+	_wait_on = null
 	waiting_for_next = false
 	call_deferred("_push_from_inventory")  # ← тоже deferred
 
@@ -193,14 +199,13 @@ func _retry_needed() -> bool:
 func push_retry_tick(delta: float) -> void:
 	if inventory.is_empty() or not _factory_active():
 		return
-	if waiting_for_next:
-		if is_instance_valid(_wait_on) and _wait_on.slot_freed.is_connected(_on_next_block_freed):
-			return
-		waiting_for_next = false
 	_retry_t -= delta
 	if _retry_t > 0.0:
 		return
 	_retry_t = PUSH_RETRY
+	# Retry even while subscribed: a silo frees space without a reliable signal (same jam as
+	# FactoryBlock.push_retry_tick). Drop the subscription first - _push_from_inventory skips while waiting.
+	_clear_wait()
 	_push_from_inventory()
 
 ## HANDED IN BY A CHAIN NEIGHBOUR - a belt into its back, the auto miner - INTO THE SAME INVENTORY the
