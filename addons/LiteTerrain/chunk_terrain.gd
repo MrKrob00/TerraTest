@@ -203,6 +203,16 @@ var _want: Dictionary = {}
 ## Запись — 1.5 КБ, так что три тысячи их стоят четыре с половиной мегабайта.
 var _hc: Dictionary = {}
 const HC_CAP := 3072
+## HOW MUCH GROUND IS KEPT ONCE OUT OF VIEW (the settings' "Terrain cache"): scales the ceilings of
+## kept heights (HC_CAP) and kept meshes (LIVE_CAP). More = less rebuilding when turning/returning,
+## at the cost of memory; less = leaner on a phone.
+var cache_scale: float = 1.0:
+	set(v):
+		cache_scale = clampf(v, 0.25, 4.0)
+func _hc_cap() -> int:
+	return int(HC_CAP * cache_scale)
+func _live_cap() -> int:
+	return int(LIVE_CAP * cache_scale)
 
 var _jobs: Array = []          # очередь мешей
 ## ОЧЕРЕДЬ ТАЙЛОВ КОЛЛИЗИИ — ОТДЕЛЬНАЯ И ПЕРВАЯ. Пока она была общей с мешами, тайл под колесом
@@ -1701,10 +1711,10 @@ func _near_player(key: int) -> bool:
 
 ## Высоты держим у того, что рисуется, лежит под коллизией или стоит в ближнем круге.
 func _prune_heights() -> void:
-	if _hc.size() <= HC_CAP:
+	if _hc.size() <= _hc_cap():
 		return
 	for key in _hc.keys():
-		if _hc.size() <= HC_CAP:
+		if _hc.size() <= _hc_cap():
 			return
 		if _live.has(key) or _want.has(key) or _col.has(key) or _near_player(key):
 			continue
@@ -2509,6 +2519,17 @@ func _point_hidden(world_pos: Vector3, height: float, was_hidden: bool) -> bool:
 	return false
 
 ## The drawn ground's height at a local point, NAN where nothing drawn has its heights.
+## THE GROUND AS DRAWN at a world point (world height), NAN where nothing drawn has heights. A far
+## node samples every 2^L m, so in a hollow its surface stands over the true ground by metres - what
+## stands on the true ground there is drawn INSIDE the hill (enemy_vehicle's far cruise).
+func drawn_height_at(world_pos: Vector3) -> float:
+	var xf: Transform3D = global_transform
+	var p: Vector3 = xf.affine_inverse() * world_pos
+	var h: float = _drawn_h(p.x, p.z)
+	if is_nan(h):
+		return NAN
+	return (xf * Vector3(p.x, h, p.z)).y
+
 func _drawn_h(x: float, z: float) -> float:
 	var bcx: int = floori(x / CHUNK)
 	var bcz: int = floori(z / CHUNK)
@@ -2773,7 +2794,7 @@ var _retire_at: float = -1e9
 const RETIRE_EVERY := 1.0
 
 func _retire(now: float) -> void:
-	var over: int = _live.size() - LIVE_CAP
+	var over: int = _live.size() - _live_cap()
 	var keys: Array
 	if over > 0 or _retire_ep != _cover_ep or now - _retire_at >= RETIRE_EVERY:
 		_retire_ep = _cover_ep

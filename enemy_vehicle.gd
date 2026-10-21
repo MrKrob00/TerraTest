@@ -480,6 +480,20 @@ func _cruise_leave() -> void:
 	sleeping = false
 	linear_velocity = _get_forward() * _cruise_v
 
+## THE GROUND THE CRUISE RIDES IS THE HIGHER OF THE TRUE ONE AND THE ONE DRAWN THERE. Cruising
+## starts at 75 m, exactly where the terrain is drawn from coarse nodes (4 m cells to 128 m, 8 m to
+## 256 m) whose surface in a hollow stands metres over the generator's heights. Riding the true
+## ground, the machine drove INSIDE the drawn hill - invisible from ~60 m (cruise) to where it slept,
+## and back the moment it left the cruise. The ridge test reads the drawn ground too, and hid it.
+func _cruise_ground(p: Vector3) -> float:
+	var y: float = G.ground_y(p, p.y)
+	var m: Node = ground_source()
+	if m != null and m.has_method("drawn_height_at"):
+		var d: float = m.drawn_height_at(p)
+		if not is_nan(d):
+			y = maxf(y, d)
+	return y
+
 func _cruise_move(delta: float) -> void:
 	_cruise_v = move_toward(_cruise_v, _throttle * max_speed * CRUISE_SPEED, CRUISE_ACCEL * delta)
 	var wb: float = _get_wheelbase()
@@ -499,7 +513,7 @@ func _cruise_move(delta: float) -> void:
 		fwd = Vector3.FORWARD
 	fwd = fwd.normalized().rotated(Vector3.UP, yaw)
 	var p: Vector3 = global_position + fwd * _cruise_v * delta
-	p.y = G.ground_y(p, p.y) + _cruise_hover
+	p.y = _cruise_ground(p) + _cruise_hover
 	global_transform = Transform3D(Basis.looking_at(fwd, Vector3.UP), p)
 
 ## Base tick: see and shoot, nothing else. No driving, no patrol, no righting itself - a standing
