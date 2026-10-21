@@ -174,7 +174,7 @@ func _find_vein(delta: float) -> Node3D:
 		if owner_now != null and is_instance_valid(owner_now) and owner_now != self:
 			continue
 		var d: float = global_position.distance_squared_to((c as Node3D).global_position)
-		if d < best_d:
+		if d < best_d and not _covered(c as Node3D):
 			best_d = d
 			_vein = c as Node3D
 	# ЗАНИМАЕМ: пока жила наша, она не восстанавливается и её не займёт второй шахтёр.
@@ -237,3 +237,22 @@ func _vehicle() -> Node:
 	if p == null or p.name != "blocks":
 		return null
 	return p.get_parent()
+
+## A VEIN UNDER OUR OWN MACHINE IS NOT OURS TO MINE. A miner on a base (anchored by another block)
+## takes the nearest vein within vein_reach - but only one standing CLEAR of the machine: a vein
+## regrows where it stood, and one with a block over it could not. So no block of this machine may
+## stand within VEIN_CLEAR of the vein's centre across the ground (the vein is VEIN_SIZE 3 m across).
+const VEIN_CLEAR := 1.6
+
+func _covered(vein: Node3D) -> bool:
+	var host: Node = get_parent()
+	if host == null:
+		return false
+	var vp := Vector2(vein.global_position.x, vein.global_position.z)
+	for b in host.get_children():
+		if b == self or not (b is Node3D) or not ("block" in b):
+			continue
+		var bp: Vector3 = (b as Node3D).global_position
+		if Vector2(bp.x, bp.z).distance_squared_to(vp) < VEIN_CLEAR * VEIN_CLEAR:
+			return true
+	return false

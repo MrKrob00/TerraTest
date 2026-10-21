@@ -72,7 +72,10 @@ const FACTORY_GUARDS := [13, 14, 15]
 const VEIN_LOCAL := [Vector3(0.0, 0.0, 7.5), Vector3(-3.0, 0.0, 7.5)]
 const VEIN_PAIR := Vector2(3.0, 10.5)       # how far apart a pair of veins may stand
 const VEIN_SEARCH := 70.0                   # how far from the point a factory looks for its veins
-const SITE_TRIES := 20                      # ticks to wait for the veins to be laid, then build anyway
+## Ticks to wait for the vein field round the point to be laid, then build anyway. It is laid only
+## near the player, and a factory comes in at SPAWN_DIST: with 20 the comp and fab kinds found no
+## veins yet, fell back to the plain line - and only basic factories were ever seen.
+const SITE_TRIES := 240
 
 func _open() -> bool:
 	return G.grade("start") >= MIN_GRADE
@@ -317,6 +320,9 @@ func _spawn_factory(e: Dictionary) -> Node3D:
 	if veins.is_empty() and int(e["tries"]) < SITE_TRIES:
 		e["tries"] = int(e["tries"]) + 1
 		return null                              # the field there is not laid yet: next tick
+	if veins.size() < 2 and preset != 133 and int(e["tries"]) < SITE_TRIES:
+		e["tries"] = int(e["tries"]) + 1
+		return null                              # one vein in sight so far: wait for the field round it
 	if veins.size() < 2 and preset != 133:
 		preset = 133                             # no pair of metals there: the plain line
 	var yaw: float = float(e["yaw"])

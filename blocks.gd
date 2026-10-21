@@ -263,8 +263,11 @@ func _layout_enemy_factory(kind: int) -> void:
 	if kind == 0:
 		for z in [4, 3, 2]:
 			set_block(5, 5, z, B.BELT, 0.0)
+		# a mine takes energy_per_sec * mine_interval (320) at once, and two panels buffer only one
+		# second of theirs (160): without the battery the miner never had enough and stood still
 		set_block(6, 5, 9, B.SOLAR, 0.0)
 		set_block(6, 5, 8, B.SOLAR, 0.0)
+		set_block(6, 5, 7, B.BATTERY, 0.0)
 		return
 	set_block(5, 5, 4, B.COMP_FACTORY, 0.0)                # x 4..5, z 3..4: in at z 4 (both), out at x 5
 	set_block(5, 5, 2, B.BELT, 0.0)
