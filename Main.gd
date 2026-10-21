@@ -56,6 +56,8 @@ const HAZE_DEFAULT := Vector4(150.0, 750.0, 0.85, 0.0)
 var view_distance: float = VIEW_DEFAULT
 ## Far ground merged into one mesh per cluster (ChunkTerrain HLOD). A setting so the phone can A/B it.
 var hlod_on: bool = true
+## Terrain cache size, a multiple of the terrain's own ceilings (ChunkTerrain.cache_scale).
+var terrain_cache: float = 1.0
 const SOFT_SHADOW_SIZE := 1024
 const HARD_SHADOW_SIZE := 512
 
@@ -281,6 +283,11 @@ func set_hlod(on: bool) -> void:
 	_apply_view()
 	_save_settings()
 
+func set_terrain_cache(v: float) -> void:
+	terrain_cache = clampf(v, 0.25, 4.0)
+	_apply_view()
+	_save_settings()
+
 func set_view_distance(v: float) -> void:
 	view_distance = clampf(v, VIEW_MIN, VIEW_MAX)
 	_apply_view()
@@ -292,6 +299,8 @@ func _apply_view() -> void:
 		map.view_distance = view_distance
 	if map != null and "hlod_enabled" in map:
 		map.hlod_enabled = hlod_on
+	if map != null and "cache_scale" in map:
+		map.cache_scale = terrain_cache
 	# the haze scales with the view: past the default it reaches out with it, under the default it
 	# closes in so the ground still ends inside it
 	var k: float = view_distance / VIEW_DEFAULT
@@ -356,6 +365,7 @@ func _save_settings() -> void:
 		"shadows_engine": shadows_engine,
 		"view_distance": view_distance,
 		"hlod_on": hlod_on,
+		"terrain_cache": terrain_cache,
 		"ui_scale": ui_scale,
 		"fullscreen": fullscreen,
 	})
@@ -372,6 +382,7 @@ func _load_settings() -> void:
 		shadows_engine = bool(parsed.get("shadows_engine", false))
 		view_distance = clampf(float(parsed.get("view_distance", view_distance)), VIEW_MIN, VIEW_MAX)
 		hlod_on = bool(parsed.get("hlod_on", true))
+		terrain_cache = clampf(float(parsed.get("terrain_cache", 1.0)), 0.25, 4.0)
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 

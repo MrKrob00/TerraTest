@@ -53,11 +53,11 @@ const PRESET_ORDER := [["low", "LOW"], ["medium", "MEDIUM"], ["high", "HIGH"]]
 ## Defaults of every graphics key this view touches (Main's own initial values).
 const GFX_DEFAULTS := {"auto_fps": true, "manual_scale": 0.75, "shadows_enabled": true,
 		"shadows_soft": true, "shadows_engine": false, "view_distance": 1400.0, "hlod_on": true,
-		"ui_scale": 1.0, "fullscreen": false}
+		"ui_scale": 1.0, "fullscreen": false, "terrain_cache": 1.0}
 const GFX_SETTERS := {"auto_fps": "set_auto_fps", "manual_scale": "set_manual_scale",
 		"shadows_enabled": "set_shadows_enabled", "shadows_soft": "set_shadows_soft",
 		"shadows_engine": "set_shadows_engine", "view_distance": "set_view_distance",
-		"hlod_on": "set_hlod", "ui_scale": "set_ui_scale", "fullscreen": "set_fullscreen"}
+		"hlod_on": "set_hlod", "terrain_cache": "set_terrain_cache", "ui_scale": "set_ui_scale", "fullscreen": "set_fullscreen"}
 
 ## Music lists the AUDIO page shows (`MusicManager.Ctx` values).
 var contexts: Array = []
@@ -259,6 +259,9 @@ func _fill_graphics() -> void:
 	_list.add_child(_slider_row(tr("Draw distance"), tr("How far the ground is drawn. Far costs frames and memory."),
 			float(_gfx("view_distance")), 200.0, 10000.0, 100.0, "%d m", 1.0,
 			func(v: float) -> void: _set_gfx("view_distance", v)))
+	_list.add_child(_slider_row(tr("Terrain cache"), tr("How much ground is kept in memory after it leaves the view. More means less rebuilding, but more memory."),
+			float(_gfx("terrain_cache")), 0.25, 4.0, 0.25, "%d%%", 100.0,
+			func(v: float) -> void: _set_gfx("terrain_cache", v)))
 	_list.add_child(_switch_row(tr("Merge far ground"), tr("Fewer draw calls for distant ground. Turn off to compare FPS."),
 			bool(_gfx("hlod_on")), func(on: bool) -> void: _set_gfx("hlod_on", on)))
 	_list.add_child(_head(tr("SHADOWS")))

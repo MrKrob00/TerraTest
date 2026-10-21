@@ -10718,5 +10718,31 @@
 	"Nothing to fix it with: Menu - Surrender": {
 		"ru": "Чинить нечем: Меню — Сдаться",
 		"uk": "Нічим лагодити: Меню — Здатися"
+	},
+	"Terrain cache": {
+		"ru": "Кэш ландшафта",
+		"uk": "Кеш ландшафту",
+		"es": "Caché del terreno",
+		"pt_BR": "Cache do terreno",
+		"de": "Gelände-Cache",
+		"fr": "Cache du terrain",
+		"tr": "Arazi önbelleği",
+		"ja": "地形キャッシュ",
+		"ko": "지형 캐시",
+		"zh_CN": "地形缓存",
+		"id": "Cache medan"
+	},
+	"How much ground is kept in memory after it leaves the view. More means less rebuilding, but more memory.": {
+		"ru": "Сколько земли держать в памяти после того, как она ушла из вида. Больше — меньше перестроек, но больше памяти.",
+		"uk": "Скільки землі тримати в пам'яті після того, як вона зникла з поля зору. Більше — менше перебудов, але більше пам'яті.",
+		"es": "Cuánto terreno se guarda en memoria al salir de la vista. Más significa menos reconstrucción, pero más memoria.",
+		"pt_BR": "Quanto terreno fica na memória depois de sair da vista. Mais significa menos reconstrução, porém mais memória.",
+		"de": "Wie viel Gelände im Speicher bleibt, nachdem es aus dem Blick ist. Mehr heißt weniger Neuaufbau, aber mehr Speicher.",
+		"fr": "Quantité de terrain gardée en mémoire après sa sortie du champ de vision. Plus = moins de reconstruction, mais plus de mémoire.",
+		"tr": "Görüş alanından çıkan arazinin ne kadarı bellekte tutulur. Fazlası daha az yeniden yapım, ama daha çok bellek demektir.",
+		"ja": "視界から外れた地形をどれだけメモリに残すか。多いほど再構築は減りますが、メモリを多く使います。",
+		"ko": "시야에서 벗어난 지형을 메모리에 얼마나 남길지. 많을수록 재구성은 줄지만 메모리를 더 씁니다.",
+		"zh_CN": "离开视野后在内存中保留多少地形。越多重建越少，但占用内存越多。",
+		"id": "Berapa banyak medan disimpan di memori setelah keluar dari pandangan. Lebih banyak berarti lebih sedikit pembangunan ulang, tapi lebih banyak memori."
 	}
 }
