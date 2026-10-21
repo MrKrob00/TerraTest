@@ -785,6 +785,7 @@ func _update_vehicle_button(delta: float) -> void:
 		_hide_vbtns()
 		_vbtn_cancel()
 		return
+	_tag_own_machines(cc)
 	# Every OTHER machine of the player in reach, nearest first.
 	var near: Array = []
 	var reach2: float = VBTN_SHOW_DIST * VBTN_SHOW_DIST
@@ -842,6 +843,24 @@ func _update_vehicle_button(delta: float) -> void:
 		_vbtn_cancel()
 		open_vehicle_menu(target, at)      # меню раскрывается вокруг кнопки, палец ещё зажат
 		_vmenu_touch = finger
+
+## A GREEN NAME TAG over every other machine of the player (enemy_marker.gd, `friendly`): nearer than
+## VBTN_SHOW_DIST the gear icon stands there instead, farther the tag says what and where it is.
+const OWN_TAG := preload("res://enemy_marker.gd")
+func _tag_own_machines(cc: Node) -> void:
+	if not ("vehicles" in cc):
+		return
+	for v in cc.vehicles:
+		if v == null or not is_instance_valid(v) or not (v is Node3D) or v.has_meta("own_tag"):
+			continue
+		var mk := Node3D.new()
+		mk.set_script(OWN_TAG)
+		mk.vehicle = v
+		mk.friendly = true
+		mk.min_distance = VBTN_SHOW_DIST
+		mk.position = Vector3(0, 2.6, 0)
+		(v as Node3D).add_child(mk)
+		v.set_meta("own_tag", mk)
 
 ## The machine's top, recounted every VBTN_TOP_PERIOD rather than per frame (blocks do not jump).
 func _top_of(v: Node3D, delta: float) -> float:
@@ -2058,7 +2077,7 @@ func _rebuild_vehicle_list() -> void:
 			continue
 		i += 1
 		var is_cur: bool = (v == cur)
-		var label: String = ("• " if is_cur else "  ") + str(v.name)   # "•" is in the font, "●" is not
+		var label: String = ("• " if is_cur else "  ") + (str(v.name) if str(v.name) == "Player" else EnemyMarker.name_of(v))   # "•" is in the font, "●" is not
 		var btn := _make_drawer_button(label, _select_vehicle.bind(v))
 		if is_cur:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.65, 0.2, 1))  # текущая — оранжевым

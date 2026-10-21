@@ -33,6 +33,15 @@ const COL_MARKED := Color(1.0, 0.85, 0.2)
 ## метка: тот же смысл, что у обычной, но заметнее.
 const COL_QUEST := Color(1.0, 0.55, 0.45)
 const SHOW_DISTANCE_QUEST := 600.0
+## OUR SIDE IS GREEN: the defend quest's ally (faction 0 on the AI script) and the player's own other
+## machines past the gear icon's reach (`friendly`, put up by the HUD).
+const COL_FRIEND := Color(0.35, 1.0, 0.45)
+## A player machine's tag: shown only past this (the HUD's gear icon stands over it nearer), and
+## out to the camera's far plane.
+var friendly: bool = false
+var min_distance: float = HIDE_DISTANCE
+const SHOW_DISTANCE_FRIEND := 1500.0
+var _name_t: float = 0.0
 
 # Имя собираем из двух списков по идентификатору узла: одна и та же машина всегда
 # называется одинаково, а сохранять имя никуда не нужно.
@@ -67,11 +76,53 @@ const ALERT_TIME := 3.0                    # gathers, holds, and is gone three s
 static func name_for(id: int) -> String:
 	return "%s %s" % [ADJ[absi(id) % ADJ.size()], NOUN[absi(id / ADJ.size()) % NOUN.size()]]
 
-## A machine's name: one a quest gave it (meta `display_name`, "Cleanup Crew"), else the generator's.
+## A machine's name: one a quest gave it (meta `display_name`, "Cleanup Crew"), else the ENGLISH name
+## of its core block ("Marlit Cabin" - the way the player's own is "Player"), else the generator's
+## while its blocks are not built yet.
 static func name_of(v: Object) -> String:
 	if v != null and v.has_meta("display_name"):
 		return TranslationServer.translate(String(v.get_meta("display_name")))
+	var core: String = core_name(v)
+	if core != "":
+		return core
 	return name_for(int(v.get_instance_id()) if v != null else 0)
+
+## The cabins, in the order they are asked for: the first found on a machine names it.
+const CORE_BLOCKS := ["CABIN", "MARLIT_CABIN", "AERO_CABIN", "STRYX_CABIN"]
+
+## The English name of the machine's core block, "" when it has none (yet). Kept on the machine
+## (meta `core_name`) once found: blocks do not change their cabin, and the walk is not per frame.
+static func core_name(v: Object) -> String:
+	if v == null or not is_instance_valid(v):
+		return ""
+	if v.has_meta("core_name"):
+		return String(v.get_meta("core_name"))
+	var bl: Node = (v as Node).get_node_or_null("blocks") if v is Node else null
+	if bl == null:
+		return ""
+	var cores: Array = []
+	for k in CORE_BLOCKS:
+		if k in G.Block:
+			cores.append(int(G.Block[k]))
+	var best: int = -1
+	var first: int = -1
+	for b in bl.get_children():
+		var bt = b.get("block")
+		if bt == null:
+			continue
+		if first < 0:
+			first = int(bt)
+		var at: int = cores.find(int(bt))
+		if at >= 0 and (best < 0 or at < cores.find(best)):
+			best = int(bt)
+	if best < 0:
+		best = first                         # no cabin: a base names itself by its first block
+	if best < 0:
+		return ""
+	var en: String = String(G.BLOCK_LABEL[best]) if G.BLOCK_LABEL.has(best) \
+			else String(G.Block.keys()[best]).capitalize()
+	v.set_meta("core_name", en)
+	return en
 
 func _ready() -> void:
 	_diamond(PIN_OUTLINE, Color(0, 0, 0, 0.85), 0)
@@ -126,6 +177,12 @@ func _build_plate() -> void:
 	# Плашка от неё перестаёт быть безликим прямоугольником и читается как часть метки.
 	_plate_line = _quad(Vector2(w, h * 0.12), COL, -1)
 	_plate_line.position.y = _name.position.y - h * 0.5
+
+func _rebuild_plate() -> void:
+	for p in [_plate, _plate_line]:
+		if p != null and is_instance_valid(p):
+			p.queue_free()
+	_build_plate()
 
 # Билборд-квад под текстом. Порядок рисования задаём render_priority, а не сдвигом по Z:
 # у билборда вершины разворачивает шейдер, и локальный сдвиг «назад» камера не увидит.
@@ -185,11 +242,25 @@ func _tick_marker(delta: float) -> void:
 	# большинство их невидимо — корень для них считался впустую. Настоящее расстояние
 	# берём ниже, уже только для видимых: там оно нужно значением, а не сравнением.
 	var d2: float = (cc.current_vehicle as Node3D).global_position.distance_squared_to(global_position)
-	var quest: bool = vehicle != null and is_instance_valid(vehicle) and vehicle.has_meta("story")
-	var show_d: float = SHOW_DISTANCE_QUEST if quest else SHOW_DISTANCE
-	visible = d2 <= show_d * show_d and d2 >= HIDE_DISTANCE * HIDE_DISTANCE
+	var live: bool = vehicle != null and is_instance_valid(vehicle)
+	if live and vehicle == cc.current_vehicle:
+		visible = false                       # the machine in hand needs no tag over it
+		return
+	var quest: bool = live and vehicle.has_meta("story")
+	var ally: bool = friendly or (live and vehicle.get("faction") == 0)
+	var show_d: float = SHOW_DISTANCE_FRIEND if friendly else (SHOW_DISTANCE_QUEST if quest or ally else SHOW_DISTANCE)
+	visible = d2 <= show_d * show_d and d2 >= min_distance * min_distance
 	if not visible:
 		return
+	# the name settles once the blocks are built (the marker is made before them)
+	if live and not vehicle.has_meta("core_name") and not vehicle.has_meta("display_name"):
+		_name_t -= delta
+		if _name_t <= 0.0:
+			_name_t = 1.0
+			var nm: String = name_of(vehicle)
+			if nm != _name.text:
+				_name.text = nm
+				_rebuild_plate()
 	var d: float = sqrt(d2)
 	# Размер метки НЕ должен таять с расстоянием: Label3D уменьшается перспективой, поэтому
 	# растим её ровно пропорционально дистанции — тогда на экране она ОДНОГО размера и в
@@ -207,7 +278,7 @@ func _tick_marker(delta: float) -> void:
 	var marked: bool = _is_marked(cc.current_vehicle)
 	# Порядок важен: НАЗНАЧЕННАЯ цель важнее сюжетной. Игрок сам ткнул в эту машину — значит
 	# сейчас он смотрит именно на неё, и подменять его приказ пометкой задания нельзя.
-	var base: Color = COL_MARKED if marked else (COL_QUEST if quest else COL)
+	var base: Color = COL_MARKED if marked else (COL_FRIEND if ally else (COL_QUEST if quest else COL))
 	var amp: float = 0.35 if marked else (0.3 if quest else 0.15)
 	var pulse: Color = base * (0.85 + amp * sin(_t * (6.0 if marked else (5.0 if quest else 3.0))))
 	_pin_mat.albedo_color = Color(pulse.r, pulse.g, pulse.b, 1.0)
