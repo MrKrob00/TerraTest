@@ -280,12 +280,10 @@ func _layout_enemy_factory(kind: int) -> void:
 	set_block(2, 5, 5, B.BELT, -PI / 2)                    # facing +X
 	set_block(3, 5, 5, B.BELT, -PI / 2)
 	set_block(4, 5, 5, B.BELT, 0.0)
-	# power and pickup beside line A
+	# power beside line A
 	set_block(6, 5, 9, B.SOLAR, 0.0)
 	set_block(6, 5, 8, B.SOLAR, 0.0)
 	set_block(6, 5, 7, B.BATTERY, 0.0)
-	set_block(6, 5, 6, B.COLLECTOR, 0.0)
-	set_block(3, 5, 8, B.COLLECTOR, 0.0)
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
 ## Outside the ladder on purpose (enemy_spawner._tier_of answers -1, so no ceiling touches it): the
