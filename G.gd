@@ -32,6 +32,7 @@ var _builds_loaded: bool = false
 
 func _ready() -> void:
 	_build_comp_recipes()      # до загрузки: рецепты нужны ценам, а цены — магазину
+	_grade_block_recipes()     # after the components: the block recipes are rewritten from them
 	_load_settings()           # конфиг устройства общий на все слоты — читаем до выбора слота
 	_load_translations()       # словари в память до первой сцены: меню уже говорит на своём языке
 	_apply_lang()
@@ -857,6 +858,68 @@ var COMP_PARENT: Array = []
 ## цвет, подобранный вручную, всё равно бы такого не дал и разъехался бы с рецептами.
 var COMP_COLOR: Array = []
 
+## RECIPES BY GRADE (the player's rule): grades 1-2 are built from SIMPLE components, grades 4-5 from
+## COMPLEX ones, grade 3 from two simple and one complex. Still two materials a recipe (the fabricator
+## tells its inputs apart by kind). The table above keeps its pairs as the THEME: each material in it
+## is turned into the simple or complex component nearest to it (an ingot into the first simple part
+## made of that metal, a complex part into its first parent, a simple one into the first complex part
+## made of it), and the counts are kept small, a little more for the big blocks.
+func _grade_block_recipes() -> void:
+	for bt in BLOCK_RECIPE.keys():
+		var orig: Dictionary = BLOCK_RECIPE[bt]
+		if orig.size() < 2:
+			continue
+		var keys: Array = orig.keys()
+		var total: int = 0
+		for k in keys:
+			total += int(orig[k])
+		var mult: int = clampi(roundi(float(total) / 10.0), 1, 4)
+		var g: int = int((BLOCK_META.get(bt, {}) as Dictionary).get("g", 1))
+		var out: Dictionary = {}
+		if g <= 2:
+			var a: int = _simple_of(String(keys[0]))
+			var b: int = _simple_of(String(keys[1]))
+			if b == a:
+				b = (a + 1) % COMP_SIMPLE_COUNT
+			out[comp_key(a)] = (2 if g == 2 else 1) * mult
+			out[comp_key(b)] = 1 * mult
+		elif g == 3:
+			var cx: int = _complex_of(String(keys[0]))
+			var sa: int = _simple_of(String(keys[1]))
+			out[comp_key(sa)] = 2 * mult
+			out[comp_key(cx)] = 1 * mult
+		else:
+			var ca: int = _complex_of(String(keys[0]))
+			var cb: int = _complex_of(String(keys[1]))
+			if cb == ca:
+				cb = COMP_SIMPLE_COUNT + (ca - COMP_SIMPLE_COUNT + 1) % (COMP_NAME.size() - COMP_SIMPLE_COUNT)
+			out[comp_key(ca)] = 2 * mult
+			out[comp_key(cb)] = (2 if g >= 5 else 1) * mult
+		BLOCK_RECIPE[bt] = out
+
+## The simple component nearest a material key ("m2", "c7", "c3").
+func _simple_of(key: String) -> int:
+	var n: int = int(key.substr(1))
+	if key.begins_with("m"):
+		for c in COMP_SIMPLE_COUNT:
+			if (COMP_PARENT[c] as Array).has(n):
+				return c
+		return 0
+	if n < COMP_SIMPLE_COUNT:
+		return n
+	return int((COMP_PARENT[n] as Array)[0])
+
+## The complex component nearest a material key.
+func _complex_of(key: String) -> int:
+	var n: int = int(key.substr(1))
+	if key.begins_with("c") and n >= COMP_SIMPLE_COUNT:
+		return n
+	var s: int = _simple_of(key)
+	for c in range(COMP_SIMPLE_COUNT, COMP_NAME.size()):
+		if (COMP_PARENT[c] as Array).has(s):
+			return c
+	return COMP_SIMPLE_COUNT
+
 func _build_comp_recipes() -> void:
 	COMP_RECIPE.clear()
 	COMP_PARENT.clear()
@@ -1180,7 +1243,7 @@ func recipe_text(rec: Dictionary) -> String:
 ##
 ## Блока без рецепта Scrapper не принимает и не портит (см. scrapper.gd), поэтому пустая
 ## строка здесь — это не «пока не сделали», а «разбирать нельзя».
-const BLOCK_RECIPE := {
+var BLOCK_RECIPE := {
 	# Ключи — те же, что возвращает resource.kind_key(): "m<металл>", "c<компонент>".
 	# В комментарии — что это за компонент: по "c17" не догадаешься, а enum в ключ словаря
 	# не подставить (ключ обязан быть строкой ключа вида).
