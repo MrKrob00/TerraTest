@@ -84,15 +84,31 @@ uniform sampler2D seam_tex : filter_nearest;
 uniform float radius = 4.0;
 
 varying vec3 v_cell;
-varying float v_rnd;
-varying vec2 v_uv;
-varying vec3 v_wpos;
-varying vec3 v_wout;
+varying mediump float v_rnd;
+varying mediump vec2 v_uv;
 varying vec3 v_lpos;
 varying flat float v_idx;
+// CHEAP PATH: everything that is constant per plate or smooth over the dome is done per VERTEX.
+// The plate centre and random number are the same on all vertices of a plate, so `up` is exact;
+// the fresnel rim is smooth, so interpolating it costs nothing visible but drops two pow, a
+// normalize and a dot from every fragment.
+varying mediump float v_up;
+varying mediump float v_rim;
+
+// Which plates stand: hit cap (always), charge-sized cap, and the even spread over the shell.
+float plate_up(vec3 cell_pos, float rnd) {
+	vec3 dh = cell_pos - hit_pos;
+	float near = 1.0 - dot(dh, dh) / (2.0 * radius * radius);
+	float core = step(keep_cos, near);
+	float e = clamp(energy, 0.0, 1.0);
+	float s = mix(sqrt(max(1.0 - keep_cos * keep_cos, 0.0)), 1.0, e);
+	float thr = sqrt(max(1.0 - s * s, 0.0));
+	float cap = step(thr, near + (rnd - 0.5) * keep_jitter);
+	return max(core, max(cap, step(rnd, e)));
+}
 
 void vertex() {
-	v_cell = COLOR.rgb * 2.0 - 1.0;
+	v_cell = normalize(COLOR.rgb * 2.0 - 1.0) * radius;
 	v_rnd = COLOR.a;
 	v_uv = UV;
 	v_lpos = VERTEX;
@@ -100,8 +116,11 @@ void vertex() {
 	// Наружное направление и мировая точка считаются здесь САМИ. Встроенный NORMAL приходит
 	// вывернутым (у меша, собранного кодом, обход вершин обратный, и движок доворачивает
 	// нормаль по своему соглашению) — измерено: ближняя полусфера уходила в множитель дальней.
-	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_wout = normalize((MODEL_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
+	vec3 wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 wout = normalize((MODEL_MATRIX * vec4(normalize(VERTEX), 0.0)).xyz);
+	float ndv = 1.0 - clamp(dot(wout, normalize(CAMERA_POSITION_WORLD - wpos)), 0.0, 1.0);
+	v_rim = pow(ndv, rim_pow) * rim_gain + pow(ndv, halo_pow) * halo_gain;
+	v_up = plate_up(v_cell, v_rnd);
 }
 
 void fragment() {
@@ -115,11 +134,12 @@ void fragment() {
 		}
 	}
 	// The plate this fragment belongs to: the baked one, or on a merged hull the nearest centre.
-	vec3 cell_pos = normalize(v_cell) * radius;
+	vec3 cell_pos = v_cell;
 	float rnd = v_rnd;
 	float t = v_uv.x;
 	float edge_pos = min(v_uv.y, 1.0 - v_uv.y);
 	float corner_v = -1.0;
+	float up = v_up;
 	if (merged) {
 		int row = int(v_idx + 0.5);
 		float d1 = 1e9;
@@ -157,6 +177,7 @@ void fragment() {
 		t = max(t2, t3);
 		// A corner is where the third centre is as close as the second: both edges are near.
 		corner_v = min(t2, t3);
+		up = plate_up(cell_pos, rnd);
 	}
 
 	// ПОЛОСА С ПЛАТО, А НЕ СКЛОН. smoothstep до самой единицы достигает её ровно НА ребре, то
@@ -168,47 +189,9 @@ void fragment() {
 			? smoothstep(1.0 - line_w * 1.6, 1.0, corner_v)
 			: smoothstep(corner_w, 0.0, edge_pos) * smoothstep(1.0 - line_w * 2.0, 1.0, t);
 
-	// ЧТО СТОИТ, А ЧТО ОСЫПАЛОСЬ. Близость к попаданию — скалярное произведение центров; внутри
-	// пластины центр постоянен, так что число одно на всю пластину и края не рвутся.
-	//
-	// Шапка (core) стоит ВСЕГДА, вплоть до нулевого заряда: пустая решётка неотличима от
-	// выключенного щита, а он ещё работает, и по этим семи пластинам видно, с какой стороны его
-	// дожимают. Остальное садится порогом, который едет от «всё» при полном заряде к границе
-	// шапки при пустом.
-	// Chord to cosine: on a sphere of `radius` the two are one number, so every threshold below keeps
-	// its meaning, and across a merged hull "near the hit" is simply near in space.
-	vec3 dh = cell_pos - hit_pos;
-	float near = 1.0 - dot(dh, dh) / (2.0 * radius * radius);
-	float core = step(keep_cos, near);
-	// ЗАРЯД ТЯНЕТ РАДИУС ШАПКИ НА ЭКРАНЕ, А НЕ КОСИНУС И НЕ УГОЛ. Купол виден как КРУГ, и шапка
-	// половинного угла θ занимает на нём радиус sin θ — то есть по косинусу шкала врёт вдвойне.
-	// Сначала порог ехал линейно по косинусу до −1: полшкалы уходило на дальнюю, отсечённую
-	// половину, и кадры на заряде 1.0 и 0.6 не отличались НИ ОДНИМ пикселем (измерено). Потом до
-	// −0.17, ближней полусферы: лучше, но верх шкалы всё равно съедал край силуэта, который виден
-	// с ребра и ничего не весит. Здесь линеен сам ЭКРАННЫЙ радиус: половина заряда — круг вдвое
-	// уже, и это видно сразу.
-	float s_keep = sqrt(max(1.0 - keep_cos * keep_cos, 0.0));
-	float s = mix(s_keep, 1.0, clamp(energy, 0.0, 1.0));
-	float thr = sqrt(max(1.0 - s * s, 0.0));
-	float cap = step(thr, near + (rnd - 0.5) * keep_jitter);
-	// А ЩИТ ВСЁ-ТАКИ ОКРУЖАЕТ МАШИНУ ЦЕЛИКОМ. Одной шапки мало: получив в корму, игрок смотрел
-	// бы вперёд и не видел там вообще ничего. Поэтому поверх шапки идёт прежний равномерный
-	// порог по случайному числу пластины. Он же вытягивает середину шкалы: пластин всего 92, они
-	// лежат кольцами вокруг любой выбранной, и между первым кольцом и вторым по косинусу провал
-	// — шапка растёт скачками 7 → 13 → 22, а рассыпанные по оболочке пластины заполняют
-	// промежутки. Вместе это читается так: густо там, куда бьют, редко по остальной оболочке.
-	float spread = step(rnd, clamp(energy, 0.0, 1.0));
-	float up = max(core, max(cap, spread));
-
-	// БЛИЖНЯЯ ПОЛУСФЕРА ИЛИ ДАЛЬНЯЯ — ЧИСТАЯ ГЕОМЕТРИЯ: наружное направление против направления
-	// на камеру. Ни FRONT_FACING, ни NORMAL здесь не годятся — оба зависят от обхода вершин, а
-	// он у собранного кодом меша обратный, и оба врали наоборот.
-	//
-	// И abs, А НЕ clamp СНИЗУ: у дальней полусферы скалярное произведение отрицательно, обрезка
-	// в ноль давала френель, горящий по ВСЕЙ задней половине разом — ровная заливка поверх
-	// купола, та самая «молочная» сфера, из-за которой не было видно ни машины, ни узора.
-	float ndv = 1.0 - clamp(dot(v_wout, normalize(CAMERA_POSITION_WORLD - v_wpos)), 0.0, 1.0);
-	float rim = pow(ndv, rim_pow) * rim_gain + pow(ndv, halo_pow) * halo_gain;
+	// Which plates stand and the fresnel rim come from the vertex stage (see v_up / v_rim);
+	// only a merged hull re-picks its plate per fragment and recomputes `up` above.
+	float rim = v_rim;
 
 	// Ветка по ЮНИФОРМУ: пока по щиту не попали, она не считается ни на одном пикселе.
 	vec3 col = tint;
@@ -216,7 +199,8 @@ void fragment() {
 	if (hit > 0.001) {
 		// Своя пластина или нет — сравнением центров. Внутри пластины центр постоянен, так что
 		// это точное «да/нет», а не расстояние по куполу.
-		float mine = 1.0 - step(0.35, length(cell_pos - hit_pos));
+		vec3 dm = cell_pos - hit_pos;
+		float mine = 1.0 - step(0.1225, dot(dm, dm));
 		flare = mine * hit;
 		float gt = floor(TIME * glitch_rate);
 		float g = fract(sin(gt * 12.9898 + rnd * 78.233) * 43758.5453);

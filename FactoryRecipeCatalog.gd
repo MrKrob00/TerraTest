@@ -62,5 +62,5 @@ static func current_entry_id(block: Node, is_comp: bool) -> int:
 	if block == null or not is_instance_valid(block):
 		return 0
 	if is_comp:
-		return int(block.get("output_comp", 0))
-	return int(block.get("output_block", 0))
+		return int(block.get("output_comp") if block.get("output_comp") != null else 0)
+	return int(block.get("output_block") if block.get("output_block") != null else 0)

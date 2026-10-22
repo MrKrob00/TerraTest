@@ -9,7 +9,7 @@ var on_pick: Callable = Callable()
 
 func setup(items: Array, selected_idx: int, callback: Callable) -> void:
 	entries = items
-	current_index = clampi(selected_idx, 0, maxv(items.size() - 1, 0))
+	current_index = clampi(selected_idx, 0, maxi(items.size() - 1, 0))
 	on_pick = callback
 	queue_redraw()
 
