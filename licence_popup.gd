@@ -12,6 +12,11 @@ extends CanvasLayer
 
 const ICON := 72
 const COLS := 4
+## One block cell's footprint in the grid (picture, frame, a two-line name) and what the rest of
+## the card takes - title, text, button, margins - so the grid scrolls in what is left of the screen.
+const CELL_W := ICON + 40
+const CELL_H := ICON + 8 + 40
+const CARD_REST := 300.0
 
 var _queue: Array = []          # [{title, body, faction, blocks}]
 var _root: Control = null
@@ -53,6 +58,7 @@ func _show_next() -> void:
 	if _queue.is_empty():
 		return
 	var e: Dictionary = _queue.pop_front()
+	_shown_ms = Time.get_ticks_msec()
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -60,7 +66,9 @@ func _show_next() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.02, 0.04, 0.55)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# a tap beside the card closes it too: on a short phone screen the button was the only way out
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.gui_input.connect(_on_dim_input)
 	_root.add_child(dim)
 	var cc := CenterContainer.new()
 	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -74,7 +82,7 @@ func _show_next() -> void:
 	sb.set_corner_radius_all(10)
 	sb.set_content_margin_all(22)
 	panel.add_theme_stylebox_override("panel", sb)
-	panel.custom_minimum_size = Vector2(560, 0)
+	panel.custom_minimum_size = Vector2(minf(560.0, get_viewport().get_visible_rect().size.x * 0.9), 0)
 	cc.add_child(panel)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 14)
@@ -100,22 +108,35 @@ func _show_next() -> void:
 	var body := Label.new()
 	body.text = String(e["body"])
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size = Vector2(520, 0)
+	body.custom_minimum_size = Vector2(minf(520.0, get_viewport().get_visible_rect().size.x * 0.85), 0)
 	body.add_theme_font_size_override("font_size", 19)
 	body.add_theme_color_override("font_color", Color(0.82, 0.9, 0.95))
 	vb.add_child(body)
 	# the blocks
 	var blocks: Array = e["blocks"]
+	# THE CARD FITS THE SCREEN (a phone in landscape is ~576 units tall): thirteen blocks in three
+	# rows pushed the button off the bottom and the card could not be closed (the player's report).
+	# The grid takes as many columns as the width allows and scrolls in what height is left.
+	var screen: Vector2 = get_viewport().get_visible_rect().size
 	if not blocks.is_empty():
 		var grid := GridContainer.new()
-		grid.columns = mini(COLS if blocks.size() <= 8 else COLS + 1, blocks.size())
+		var fit: int = maxi(COLS, int((screen.x * 0.9 - 44.0) / float(CELL_W + 12)))
+		grid.columns = mini(fit, blocks.size())
 		grid.add_theme_constant_override("h_separation", 12)
 		grid.add_theme_constant_override("v_separation", 10)
 		var gc := CenterContainer.new()
+		gc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		gc.add_child(grid)
-		vb.add_child(gc)
 		for bt in blocks:
 			grid.add_child(_block_cell(int(bt)))
+		var rows: int = ceili(float(blocks.size()) / float(grid.columns))
+		var need: float = rows * CELL_H + (rows - 1) * 10.0
+		var room: float = maxf(CELL_H, screen.y - CARD_REST)
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size = Vector2(minf(screen.x * 0.9 - 44.0, grid.columns * (CELL_W + 12)), minf(need, room))
+		sc.add_child(gc)
+		vb.add_child(sc)
 	var ok := Button.new()
 	ok.text = tr("Continue")
 	ok.custom_minimum_size = Vector2(220, 52)
@@ -172,6 +193,17 @@ func _block_cell(bt: int) -> Control:
 	name_l.add_theme_color_override("font_color", Color(0.75, 0.85, 0.9))
 	v.add_child(name_l)
 	return v
+
+## A tap beside the card closes it, but not in its first moments: it comes up mid-fight, under a
+## finger already on the glass.
+const DIM_GRACE_MS := 600
+var _shown_ms := 0
+
+func _on_dim_input(ev: InputEvent) -> void:
+	if Time.get_ticks_msec() - _shown_ms < DIM_GRACE_MS:
+		return
+	if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+		_close()
 
 func _close() -> void:
 	if _root != null:

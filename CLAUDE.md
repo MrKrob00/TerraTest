@@ -3662,7 +3662,11 @@ project: read it before claiming how anything works.
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
   on `G.licence_granted` (emitted by `grant_licence`), that grade's blocks on `G.grade_up`; a gold
   frame on a block already researched. Several queue. It was a System line in the dialogue strip,
-  which scrolls away and shows nothing. Not on the proving ground.
+  which scrolls away and shows nothing. Not on the proving ground. THE CARD FITS THE SCREEN (the
+  player: "on the phone the panel cannot be closed" - thirteen grade-2 blocks in three rows put the
+  button under the bottom edge of a 576-unit landscape screen): the grid takes as many columns as
+  the width allows and scrolls in what is left after `CARD_REST`, and a tap beside the card closes
+  it too (after `DIM_GRACE_MS`: it comes up mid-fight under a finger already down).
 - **THE MARLIT SOLAR ARRAY IS A LID THAT TURNS OVER** (`MARLIT_SOLAR`, `blocks/scripts/marlit_solar.gd`,
   `art/emitter_models.py` marlit_solar): a 2x1x2 housing whose top is two leaves, the Marlit window on
   one side and 4x2 cells on the other. On the anchor each leaf rides up on two rams to the middle of
