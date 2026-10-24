@@ -106,7 +106,8 @@ project: read it before claiming how anything works.
 
 ## 1. Project skeleton
 
-- Autoloads: `G` (progress, prices, block metadata), `Dialogue`, `Music`, `Q` (quests), `MobileAds`.
+- Autoloads: `G` (progress, prices, block metadata), `Dialogue`, `Music`, `Q` (quests), `MobileAds`,
+  `Icons`, `TouchButtons`, `Sfx` (sound effects).
 - Main scene is `menu.tscn`: the slot is chosen before map, machines and veins read any file.
 - World root `/root/Main`: `map` (ChunkTerrain + veins + props), `Vehicles`, `objects` (loose blocks
   and resources), `EnemySpawner`.
@@ -2625,6 +2626,22 @@ project: read it before claiming how anything works.
   THE MENU BUILDS IT WHEN ITS SETTINGS FIRST OPEN (`menu._music_panel`), not in the menu's first
   frame behind a closed panel, and its `contexts` are set BEFORE it enters the tree: `_ready`
   builds, and `setup()` after `add_child` built everything a second time.
+- **THE GAME'S SOUND EFFECTS ARE ONE AUTOLOAD, `Sfx`** (`sfx.gd`; clips `resources/sfx/*.ogg` from
+  `art/game_sfx.py`, credits in `resources/sfx/CREDITS.md`; the player: "sounds are almost missing").
+  `Sfx.at(key, pos)` from a pool of `POOL_3D` AudioStreamPlayer3D, `Sfx.ui(key)` flat; a key is a clip
+  or variants picked at random with the pitch nudged, and every key has a GAP and a VOICE cap in
+  `KEYS` - two dozen guns at five shots a second are not a sound a round. Nothing is started past
+  `HEAR_DIST` of the camera; clips are loaded at run time, so a missing one is silence. THE DOORS:
+  a shot at `WeaponBlock._handle_fire` (`fire_sfx` set in a subclass's `_init`, else gun or, for
+  explosive rounds, cannon; Marlit's pitched down), a hit on a block or a dome in
+  `_on_bullet_body_entered`, a blast in `BlockFX.explosion` and the rocket's `_explode`, a placement,
+  a take, a throw and a refusal in `vehicle_body_3d`, a blow on a vein (`resource_node.hurt`, mine or
+  chop), a harvest (`resource.harvest`), a sale (`seller`), EVERY BUTTON's click (`TouchButtons`
+  hooks each `BaseButton`'s `pressed`), the garage opening and closing, the licence card. THE ENGINE is
+  one flat loop for the driven machine (`_engine_tick`), pitched by speed, levelled by throttle, off in
+  assembly, anchored, on a base and in the intro. The volume is SETTINGS -> AUDIO -> EFFECTS
+  (`sfx_volume` in settings.json). Measured on the engine: every clip loads, all 21 keys play, a
+  build-25 fight on the proving ground sounds gun, cannon, hit and blast.
 - **THE MENU'S SETTINGS ARE A PAGE, NOT A PANEL OVER THE MENU** (`menu.tscn` `Settings`; the
   player: "why see the news and PLAY in the settings, squeezed somewhere in the middle"): a shade over
   the whole screen, a bar with the title and CLOSE, and the three sections side by side as columns -
