@@ -22,10 +22,6 @@ func _ready() -> void:
 func _on_node_added(n: Node) -> void:
 	if n is BaseButton and not n.gui_input.is_connected(_on_button_input):
 		n.gui_input.connect(_on_button_input.bind(n))
-		n.pressed.connect(_click)                # every button in the game clicks: one door
-
-func _click() -> void:
-	Sfx.ui("click")
 
 func _on_button_input(ev: InputEvent, b: BaseButton) -> void:
 	var t := ev as InputEventScreenTouch

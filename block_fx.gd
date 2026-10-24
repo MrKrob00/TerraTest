@@ -466,7 +466,6 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 	var tree := anchor.get_tree()
 	if tree != null and tree.current_scene != null:
 		blast_cards(tree.current_scene, world_pos, radius)
-	Sfx.at("blast", world_pos, clampf(1.6 - radius * 0.15, 0.7, 1.3))
 
 static func _root_of(n: Node) -> Node:
 	var p: Node = n

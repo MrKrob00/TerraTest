@@ -2044,7 +2044,6 @@ func _pick_selected_block() -> bool:
 	block_take = true
 	hand_kind = Hand.BLOCK
 	Q.report("block_taken_world", 1)               # шаг обучения: блок в руке, откуда — неважно
-	Sfx.ui("take")
 	_hand_from_inventory = false                   # снят с машины, не из инвентаря — без авто-добора
 	build_basis = stood
 	block_body.basis = build_basis                 # in the hand already turned as it stood
@@ -2410,7 +2409,6 @@ func _on_take_pressed() -> void:
 		# на вторую машину не ставится»: призрака нет, блок в руке, и ни слова почему.
 		if _preview_res == null:
 			Dialogue.say("System", tr("Aim at a cell on the machine first."))
-			Sfx.ui("error")
 			return
 		var pres: Dictionary = _preview_res
 		# Машина, её сетка и её узел blocks — всё через одну точку (_bt/_btm), чтобы «на чём
@@ -2429,7 +2427,6 @@ func _on_take_pressed() -> void:
 		var fit: Dictionary = _fit_held(pres, instance, bmn)
 		if not fit.ok:
 			Dialogue.say("System", tr(String(fit.reason)))
-			Sfx.ui("error")
 			return
 		var orient: Basis = fit.orient
 		var anchor: Vector3i = fit.anchor
@@ -2487,7 +2484,6 @@ func _on_take_pressed() -> void:
 			build_basis = Basis()
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
-		Sfx.at("place", instance.global_position)
 		if bmn.has_method("rebuild_factory_links"):
 			bmn.rebuild_factory_links()         # авто-коннект фабрики ЦЕЛИ сразу после постановки
 		if _hand_from_inventory:
@@ -2690,7 +2686,6 @@ func _drop_on_ground_tap(screen_pos: Vector2) -> bool:
 		(inst as RigidBody3D).linear_velocity = Vector3.ZERO
 		(inst as RigidBody3D).angular_velocity = Vector3.ZERO
 	BlockFX.play(inst, false)                      # the glitch a block appears with
-	Sfx.at("drop", p)
 	_clear_hand()
 	build_basis = Basis()
 	G.mark_progress_dirty()

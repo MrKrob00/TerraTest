@@ -40,7 +40,6 @@ var _salvo_t: float = 0.0
 var _idle_pitch: float = 0.0
 
 func _init() -> void:
-	fire_sfx = "mortar"
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	homing_deg = 6.0         # a lobbed shell trims its heading toward the target, not its arc
 	homing_flat = true

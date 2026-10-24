@@ -14,7 +14,6 @@ class_name RocketLauncher
 @export var aoe_damage: int = 232
 
 func _init() -> void:
-	fire_sfx = "rocket"
 	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	homing_deg = 25.0        # TerraTech's rockets home in part (BulletSim._steer)
 	turn_speed = 54.0        # deg/s (WeaponBlock._turn_to): a full pod
@@ -87,7 +86,6 @@ func _explode(pos: Vector3) -> void:
 			b.hurt(_scale_damage(aoe_damage * f))
 		_alert_victim(b)                                   # взрыв тоже выдаёт, кто стрелял
 	_spawn_explosion_fx(pos)
-	Sfx.at("blast", pos, 1.2, -4.0)                         # a rocket's blast: smaller than a block's
 
 # Корневое тело (RigidBody3D) для узла — чтобы отличить свою машину от чужой.
 func _root_of(n: Node) -> Node:

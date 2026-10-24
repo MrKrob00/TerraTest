@@ -229,8 +229,6 @@ func harvest() -> void:
 	if type != Type.ORE or has_meta(&"harvested"):
 		return
 	set_meta(&"harvested", true)
-	if is_inside_tree():
-		Sfx.at("pickup", global_position)
 	Q.report("ore_collected", 1)
 	Q.report("ore_collected_%d" % metal, 1)
 

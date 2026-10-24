@@ -697,17 +697,8 @@ func _handle_fire(delta: float) -> void:
 	# и вспышка обязана ехать с ними: в мировой точке она оставалась там, где был ствол в момент
 	# нажатия. Направление при этом отдельно задавать не нужно — узел уже смотрит по стволу.
 	_muzzle_fx((-$Pivot.global_transform.basis.z).normalized())
-	Sfx.at(_fire_sfx(), _muzzle_point().global_position, 0.85 if round_style == &"marlit" else 1.0)
 	# Several barrels fire in turn (Marlit's twin gun): the next shot leaves from the next muzzle.
 	_muzzle_i = (_muzzle_i + 1) % maxi(_muzzle_list().size(), 1)
-
-## WHAT A SHOT SOUNDS LIKE (sfx.gd's keys): a subclass names its own in `_init` (`fire_sfx`), a
-## weapon on this script itself is the gun, or the heavy cannon when its rounds are explosive.
-var fire_sfx: String = ""
-func _fire_sfx() -> String:
-	if fire_sfx != "":
-		return fire_sfx
-	return "cannon" if damage_kind == VehicleBlock.Dmg.EXPLOSIVE else "gun"
 
 ## ЧЕМ ВЫСТРЕЛ ВЫГЛЯДИТ. Отдельный метод, а не строка в _handle_fire: дверь остаётся одна (сюда
 ## приходит каждый ствол ровно раз на выстрел), но подкласс может показать своё — как он уже
@@ -1172,13 +1163,9 @@ func _on_bullet_body_entered(body: Node3D, source) -> void:
 	if body.has_method("struck"):
 		body.hurt(_shot_damage(), shield_cost_mult)
 		_alert_victim(body)
-		if is_instance_valid(source):
-			Sfx.at("shield", source.global_position)
 	elif body is VehicleBlock:
 		body.hurt(_shot_damage(), damage_kind)
 		_alert_victim(body)
-		if is_instance_valid(source):
-			Sfx.at("hit", source.global_position)
 	elif body.has_method("hurt"):
 		body.hurt(_shot_damage())          # a vein: wood and rock are not in the table
 		_alert_victim(body)

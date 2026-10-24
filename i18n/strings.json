@@ -10744,44 +10744,5 @@
 		"ko": "시야에서 벗어난 지형을 메모리에 얼마나 남길지. 많을수록 재구성은 줄지만 메모리를 더 씁니다.",
 		"zh_CN": "离开视野后在内存中保留多少地形。越多重建越少，但占用内存越多。",
 		"id": "Berapa banyak medan disimpan di memori setelah keluar dari pandangan. Lebih banyak berarti lebih sedikit pembangunan ulang, tapi lebih banyak memori."
-	},
-	"EFFECTS": {
-		"ru": "ЭФФЕКТЫ",
-		"uk": "ЕФЕКТИ",
-		"es": "EFECTOS",
-		"pt_BR": "EFEITOS",
-		"de": "EFFEKTE",
-		"fr": "EFFETS",
-		"tr": "EFEKTLER",
-		"ja": "サウンド",
-		"ko": "사운드",
-		"zh_CN": "音效",
-		"id": "EFEK"
-	},
-	"Effects volume": {
-		"ru": "Громкость эффектов",
-		"uk": "Гучність ефектів",
-		"es": "Volumen de efectos",
-		"pt_BR": "Volume dos efeitos",
-		"de": "Effektlautstärke",
-		"fr": "Volume des effets",
-		"tr": "Efekt sesi",
-		"ja": "サウンドの音量",
-		"ko": "사운드 음량",
-		"zh_CN": "音效音量",
-		"id": "Volume efek"
-	},
-	"Shots, hits, building and the engine.": {
-		"ru": "Выстрелы, попадания, стройка и мотор.",
-		"uk": "Постріли, влучання, будівництво і мотор.",
-		"es": "Disparos, impactos, construcción y motor.",
-		"pt_BR": "Tiros, impactos, construção e motor.",
-		"de": "Schüsse, Treffer, Bauen und Motor.",
-		"fr": "Tirs, impacts, construction et moteur.",
-		"tr": "Atışlar, isabetler, inşa ve motor.",
-		"ja": "射撃、命中、組み立て、エンジン。",
-		"ko": "사격, 피격, 건설, 엔진.",
-		"zh_CN": "射击、命中、建造和发动机。",
-		"id": "Tembakan, hantaman, membangun dan mesin."
 	}
 }

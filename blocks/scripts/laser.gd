@@ -45,7 +45,6 @@ var _charge: Node3D = null
 var _rings: Array[MeshInstance3D] = []
 
 func _init() -> void:
-	fire_sfx = "laser"
 	damage_kind = VehicleBlock.Dmg.ENERGY   # x1.5 on armour and batteries, x0.5 on shields
 	turn_speed = 60.0        # deg/s (WeaponBlock._turn_to): the lens stack is heavier than the gun
 
