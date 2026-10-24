@@ -250,7 +250,7 @@ theme_override_constants/v_separation = 2
 
 [node name="H1" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Tap a block — take it in hand"
+text = "Double-tap a block — take it in hand"
 
 [node name="H2" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
@@ -262,7 +262,7 @@ text = "Search — filter by name"
 
 [node name="H4" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Double-tap the vehicle — place a block"
+text = "Tap the vehicle — place a block"
 
 [node name="H5" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2

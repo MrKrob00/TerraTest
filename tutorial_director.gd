@@ -373,8 +373,8 @@ func _aim_current_step() -> void:
 					TutorialGuide.Gate.WORLD)
 		"tut_place_first":
 			_show_blueprint()
-			_aim_world(_blueprint_point, "Double-tap the outlined cell to attach it there",
-					TutorialGuide.Gate.WORLD)
+			_aim_world(_blueprint_point, "Tap the outlined cell to attach it there",
+					TutorialGuide.Gate.WORLD, false)
 		"tut_place_all":
 			# Свободный шаг: мир открыт, UI — нет. Палец не висит на машине всё время, а
 			# показывает, что делать СЕЙЧАС: блок в руке — куда ставить, рука пуста — что брать.
@@ -383,7 +383,7 @@ func _aim_current_step() -> void:
 			var holding: bool = v != null and "block_take" in v and v.block_take
 			if holding:
 				_aim_world(_blueprint_point, "Now attach it — the outline shows where",
-						TutorialGuide.Gate.WORLD)
+						TutorialGuide.Gate.WORLD, false)
 			else:
 				_aim_world(_nearest_loose_block, "Take the next part",
 						TutorialGuide.Gate.WORLD)
@@ -423,7 +423,7 @@ func _aim_node(node: CanvasItem, text: String, double_tap: bool = false,
 	_set_ui_locked(false)
 	_guide.point_at_node(node, text, double_tap, gate)
 
-func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.TARGET) -> void:
+func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.TARGET, double_tap: bool = true) -> void:
 	var key := "%s|%s|%s" % [_step, getter.get_method(), text]
 	if _aimed == key:
 		return
@@ -431,7 +431,7 @@ func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.T
 	# В режиме WORLD заглушки нет (иначе она съела бы и тап по миру), поэтому меню/гараж
 	# на время шага гасим отдельно — руками HUD.
 	_set_ui_locked(gate == TutorialGuide.Gate.WORLD)
-	_guide.point_at_world(getter, tr(text), true, gate)
+	_guide.point_at_world(getter, tr(text), double_tap, gate)
 
 func _set_ui_locked(locked: bool) -> void:
 	var hud: Node = get_parent()
@@ -579,7 +579,7 @@ func _aim_arsenal() -> void:
 	var route: String = "ok"
 	if _step == "tut_place_gun" and _held_block() == gun:
 		_show_gun_hint()
-		_aim_world(_gun_point, "Double-tap the cabin's roof to attach it", TutorialGuide.Gate.WORLD)
+		_aim_world(_gun_point, "Tap the cabin's roof to attach it", TutorialGuide.Gate.WORLD, false)
 		_route_prev = "ok"
 		return
 	if tab < 0:

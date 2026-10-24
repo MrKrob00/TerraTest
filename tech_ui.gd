@@ -97,6 +97,7 @@ func _ready() -> void:
 	_build_filter_column()
 	_build_shop_head()
 	_build_stats_panel()
+	_build_panel_fold()
 	_build_shop_v2()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
@@ -1723,8 +1724,16 @@ func _select_tab(idx: int) -> void:
 	if is_instance_valid(_set_view):
 		_set_view.visible = is_settings
 	var rpanel: Control = get_node_or_null("Root/Main/RightPanel") as Control
+	var folded: bool = is_build and _panel_folded
 	if rpanel != null:
-		rpanel.visible = not is_settings
+		rpanel.visible = not is_settings and not folded
+	if is_instance_valid(_unfold_btn):
+		_unfold_btn.visible = folded
+	if is_instance_valid(_fold_btn):
+		_fold_btn.visible = is_build
+	var bottom: Control = get_node_or_null("Root/BottomBar") as Control
+	if bottom != null:
+		bottom.visible = not folded
 	if _tech_root:
 		_tech_root.visible = is_tech
 	if _search:
@@ -1994,6 +2003,53 @@ func _build_stats_panel() -> void:
 		value.add_theme_font_size_override("font_size", 15)
 		grid.add_child(value)
 		_stat_values[key] = value
+
+# THE STATS FOLD AWAY IN ASSEMBLY (the player: "the panel covers a quarter of the screen, building
+# on anything but the player's machine is hard - a button that hides it"). A "›" beside the
+# machine's name folds the panel and the hints strip; a "‹" left at the right edge brings them back.
+# Assembly only: every other tab needs the panel. Kept in settings.json (`G.ui_windows`).
+const FOLD_KEY := "garage_stats_folded"
+var _panel_folded: bool = false
+var _fold_btn: Button = null
+var _unfold_btn: Button = null
+
+func _build_panel_fold() -> void:
+	var right: Node = get_node_or_null("Root/Main/RightPanel/RightVB")
+	var main: Node = get_node_or_null("Root/Main")
+	if right == null or main == null:
+		return
+	_panel_folded = G.ui_windows.get(FOLD_KEY, false) == true
+	var name_l: Node = right.get_node_or_null("VehicleName")
+	var head := HBoxContainer.new()
+	head.name = "Head"
+	right.add_child(head)
+	right.move_child(head, 0)
+	if name_l != null:
+		name_l.reparent(head)
+		(name_l as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		(name_l as Label).clip_text = true
+	_fold_btn = _fold_button("›")
+	_fold_btn.pressed.connect(_set_folded.bind(true))
+	head.add_child(_fold_btn)
+	_unfold_btn = _fold_button("‹")
+	_unfold_btn.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_unfold_btn.pressed.connect(_set_folded.bind(false))
+	main.add_child(_unfold_btn)
+	_unfold_btn.visible = false
+
+func _fold_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(52, 52)
+	b.add_theme_font_size_override("font_size", 30)
+	b.focus_mode = Control.FOCUS_NONE
+	return b
+
+func _set_folded(on: bool) -> void:
+	_panel_folded = on
+	G.ui_windows[FOLD_KEY] = on
+	G.save_settings()
+	_select_tab(_tab)
 
 func _set_stat(key: String, text: String, tint: Color = STAT_VALUE_COLOR) -> void:
 	var lbl: Label = _stat_values.get(key)

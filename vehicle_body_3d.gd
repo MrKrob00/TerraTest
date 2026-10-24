@@ -1020,6 +1020,7 @@ func _input(event: InputEvent) -> void:
 	# в него не передаётся; орбита камеры отделена по свайпу (_build_tap_moved).
 	if (event is InputEventMouseMotion \
 			or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
+			and event.device != InputEvent.DEVICE_ID_EMULATION \
 			and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
 		# Ховер мыши шлёт до 1000 событий в секунду, и КАЖДОЕ гоняло полный пайплайн наведения
 		# (проверка HUD + DDA-луч по сетке + пересборка превью). Для наведения хватает ~60 Гц;
@@ -1031,10 +1032,15 @@ func _input(event: InputEvent) -> void:
 		_hover_ms = _now_ms
 		# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
 		if not _tap_over_ui(event.position):
-			_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
-			# ДВОЙНОЙ клик мышью = подтверждение: поставить блок из руки / взять наведённый.
-			if event is InputEventMouseButton and event.double_click:
-				_commit_build_tap(event.position)
+			var mp: Vector2 = _snap_tap(event.position) if _is_click else event.position
+			if _is_click and _swallow_habit(mp):
+				return
+			_handle_click(mp)                      # наводим/подсвечиваем (ховер и клик)
+			# A click with a block in the hand on a cell places it; a DOUBLE click takes.
+			if _is_click and not event.double_click and _aimed_at_cell():
+				_place_on_tap(mp)
+			elif event is InputEventMouseButton and event.double_click:
+				_commit_build_tap(mp)
 	elif event is InputEventScreenTouch:
 		if event.pressed:
 			if not _joystick_finger(event):
@@ -1054,15 +1060,24 @@ func _input(event: InputEvent) -> void:
 		elif _touch_count - _joystick_held() == 0 and not _build_tap_moved \
 				and Time.get_ticks_msec() - _build_tap_ms < LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
-			_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
-			# A DOUBLE tap (the second within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP) confirms: take or place.
+			var tp: Vector2 = _snap_tap(event.position)
+			if _swallow_habit(tp):
+				return
+			_handle_click(tp)                      # ОДИНОЧНЫЙ тап = навести/подсветить блок
+			# A SINGLE tap with a block in the hand on a cell of a machine PLACES it (the player's
+			# call: "double tap to take or remove, a single tap to place"); a DOUBLE tap (the second
+			# within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP) takes, and with a block in the hand throws it
+			# on the ground or lays a cabin / base there.
+			if _aimed_at_cell():
+				_place_on_tap(tp)
+				return
 			var _now := Time.get_ticks_msec()
-			if _now - _dbl_tap_ms < DOUBLE_TAP_MS and _dbl_tap_pos.distance_squared_to(event.position) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP:
-				_commit_build_tap(event.position)
+			if _now - _dbl_tap_ms < DOUBLE_TAP_MS and _dbl_tap_pos.distance_squared_to(tp) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP:
+				_commit_build_tap(tp)
 				_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
 			else:
 				_dbl_tap_ms = _now
-				_dbl_tap_pos = event.position
+				_dbl_tap_pos = tp
 	elif event is InputEventScreenDrag:
 		if event.index == _build_tap_idx and _build_tap_pos.distance_to(event.position) > 14.0:
 			_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
@@ -1210,8 +1225,12 @@ func _tap_over_ui(pos: Vector2) -> bool:
 	# block turned in the hand instead of where it was shown.
 	for field in _UI_HIT_PANELS:
 		var c = hud.get(field)
-		if c is Control and is_instance_valid(c) and (c as Control).is_visible_in_tree() \
-				and (c as Control).get_global_rect().has_point(pos):
+		if not (c is Control) or not is_instance_valid(c) or not (c as Control).is_visible_in_tree():
+			continue
+		if c.has_method("hits"):
+			if c.hits(pos):                        # the globe takes its round, not its square
+				return true
+		elif (c as Control).get_global_rect().has_point(pos):
 			return true
 	return false
 
@@ -2201,6 +2220,76 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 	if target.scrap_block(held):
 		_clear_hand()
 	return true
+
+## THE TAP LEANS TOWARD THE MACHINE (the player: "make the tap area bigger, hitting a block on a
+## phone is hard"): a tap that meets none of the player's machines is tried again at `TAP_FUZZ`
+## rings round the finger, and the first ring that meets one moves the tap there. A tap that meets
+## anything of ours, or nothing within the rings, stays where it was.
+const TAP_FUZZ: Array[float] = [22.0, 44.0]
+const TAP_FUZZ_DIRS := 8
+func _snap_tap(p: Vector2) -> Vector2:
+	if camera_controller == null or camera_controller.camera == null:
+		return p
+	if _ours_at(p):
+		return p
+	for r in TAP_FUZZ:
+		for i in TAP_FUZZ_DIRS:
+			var a: float = TAU * (float(i) + 0.5 * float(TAP_FUZZ.find(r))) / float(TAP_FUZZ_DIRS)
+			var q: Vector2 = p + Vector2(cos(a), sin(a)) * r
+			if _ours_at(q):
+				return q
+	return p
+
+## Whether the ray through a screen point meets this machine or another of the player's in reach.
+func _ours_at(p: Vector2) -> bool:
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(p)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(p) * 500.0)
+	q.collision_mask = VehicleBlock.block_mask(2)
+	q.exclude = _ray_skip(false)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var root: Node = hit.get("collider")
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root == self:
+		return true
+	return root != null and "vehicles" in camera_controller and camera_controller.vehicles.has(root) \
+			and global_position.distance_squared_to((root as Node3D).global_position) <= BUILD_REACH * BUILD_REACH
+
+## The aim this tap just made (`_handle_click`, here or on the machine it handed the aim to) lies on
+## a machine's cell with an ordinary block in the hand - a single tap places it.
+func _aimed_at_cell() -> bool:
+	if not block_take or hand_kind != Hand.BLOCK:
+		return false
+	var held: Node3D = _hand_instance()
+	if held == null or not ("block" in held) or G.is_cabin(int(held.get("block"))):
+		return false                               # a cabin goes on the ground: a double tap
+	var t: Node = _delegated_to if is_instance_valid(_delegated_to) else self
+	return t.get("_preview_res") != null and t.get("_cabin_ground") == null
+
+## A single tap places, and the old habit of a double tap would land its second half on the next
+## block the serial refill put in the hand: the tap after a placement inside the double-tap window
+## and slop is eaten.
+var _habit_ms: int = 0
+var _habit_pos := Vector2.ZERO
+func _place_on_tap(p: Vector2) -> void:
+	_commit_build_tap(p)
+	_dbl_tap_ms = 0
+	_habit_ms = Time.get_ticks_msec()
+	_habit_pos = p
+	get_viewport().set_input_as_handled()
+
+func _swallow_habit(p: Vector2) -> bool:
+	if _habit_ms == 0:
+		return false
+	var fresh: bool = Time.get_ticks_msec() - _habit_ms < DOUBLE_TAP_MS \
+			and _habit_pos.distance_squared_to(p) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP
+	_habit_ms = 0
+	if fresh:
+		get_viewport().set_input_as_handled()
+	return fresh
 
 ## Сколько держать, чтобы это считалось длинным нажатием.
 const LONG_PRESS_MS: int = 500

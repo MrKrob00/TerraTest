@@ -2587,7 +2587,12 @@ project: read it before claiming how anything works.
   NOT `TAU / N`: a meridian at β and one at β + 180° are the same plane, so N of them share half a
   turn (five at 36°); front is `posmod(round(-spin / AZ), N)`, which repeats every N steps, and the
   snap and `_nearest_nonempty` cover ±2, enough for five. A count shows on the SELECTED block only
-  (`×1` too); one on every block of the front ring sat over its neighbours' models.
+  (`×1` too); one on every block of the front ring sat over its neighbours' models. THE GLOBE IS
+  ROUND TO A FINGER (`_has_point`, `HIT_R` of its size, and `hits` for the world tap's "over the HUD"):
+  its square's corners took taps meant for the machine (the player: "its trigger radius is too big").
+  THE OTHER TYPES' RINGS SHOW ONLY WHILE THE TYPES TURN, and the previews are bigger (`SIZE` 360,
+  `SLOT` 0.44): four rings of tinted see-through blocks round the front one read as a cloud of
+  coloured pixels on the phone ("the icons blend into a mush").
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
   it. BOTH ITS KINDS ARE GRAPHS on the tech tree's canvas (`TechGraph`), and neither is a grid of
@@ -2652,6 +2657,9 @@ project: read it before claiming how anything works.
   and the camera - from the moment the gesture arms in the bottom-centre strip until the release; the
   release itself goes on, since the camera records releases first. Synthetic touches on the engine
   could not reproduce the turn (the garage's panel takes the press there), so the phone confirms it.
+- **THE GARAGE'S STATS FOLD AWAY IN ASSEMBLY** (`tech_ui._build_panel_fold`, the player: "the panel
+  covers a quarter of the screen"): a "›" beside the machine's name folds the right panel and the
+  hints strip, a "‹" at the right edge brings them back; kept in `G.ui_windows` (`FOLD_KEY`).
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - **THE PLAYER MOVES THE CONTROLS** (`hud` "THE PLAYER'S OWN LAYOUT", `LayoutEditor`; garage -> SETTINGS
   -> INTERFACE -> "Move controls"; the player's call): ATTACK, BUILD, the inventory, the menu, the
@@ -2783,6 +2791,19 @@ project: read it before claiming how anything works.
   against taps through the HUD, and a double tap that fired is swallowed.
 - Building on another of your machines is delegated to that machine (`_delegate_build`) — there is
   no second build implementation. Only the active machine delegates; hand flags move with the tap.
+- **A SINGLE TAP PLACES, A DOUBLE TAP TAKES** (`vehicle_body_3d._aimed_at_cell` / `_place_on_tap`; the
+  player: "double tap to take or remove, a single tap to place"). A tap whose aim, here or on the
+  machine it handed the aim to, lands on a machine's cell with an ordinary block in the hand places it
+  at once; with an empty hand a single tap only aims and the double tap takes; with a block in the
+  hand off any cell the double tap still throws it on the ground or lays a cabin / base there. The
+  OLD HABIT's second tap is eaten (`_swallow_habit`, inside the double-tap window and slop of a
+  placement), or it placed the block the serial refill had just put in the hand. THE TAP LEANS TOWARD
+  THE MACHINE (`_snap_tap`, `TAP_FUZZ` 22 / 44 px rings, the player: "hitting a block on a phone is
+  hard"): a tap meeting none of the player's machines is moved to the first ring point that does. AN
+  EMULATED MOUSE IS TOLD BY ITS DEVICE (`DEVICE_ID_EMULATION`), not only by 250 ms since a touch: a
+  second tap 276 ms after the first let the emulated click through first and it ate the habit guard.
+  Measured with synthetic touches on the real driver: a tap places (1 -> 2), the habit tap 215 ms
+  later places nothing, a tap 16 px off the hull's edge places, an empty hand's double tap takes.
 - A TAP IS ANYTHING SHORTER THAN A LONG PRESS, AND THE DOUBLE TAP IS WIDE (`DOUBLE_TAP_MS` 450,
   `DOUBLE_TAP_SLOP` 80 points). Both are measured in frame time, release to release, so a slow
   frame lands on top of the finger. With a 250 ms tap ceiling, 250..500 belonged to no gesture,

@@ -70,7 +70,7 @@ func _seed_demo() -> void:
 	add_quest("tut_take_world", "Boot: Retrieval", "Hold a block", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
 			"Your parts spilled on arrival and are lying around you. Double-tap one to hold it.")
 	add_quest("tut_place_first", "Boot: Attachment", "Attach the block", Type.TUTORIAL, 1, 2, "block_placed", 0, 0, 0, 1,
-			"Now double-tap yourself where it should attach. Any face will take it.")
+			"Now tap yourself where it should attach. Any face will take it.")
 	# Событие пустое: прогресс СТАВИТ наставник по числу блоков на машине. По событию
 	# block_placed его накручивали бы циклом «поставил — снял — поставил».
 	add_quest("tut_place_all", "Boot: Assembly", "Attach every part", Type.TUTORIAL, 7, 3, "", 0, 0, 0, 1,
