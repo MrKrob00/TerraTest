@@ -10745,62 +10745,6 @@
 		"zh_CN": "离开视野后在内存中保留多少地形。越多重建越少，但占用内存越多。",
 		"id": "Berapa banyak medan disimpan di memori setelah keluar dari pandangan. Lebih banyak berarti lebih sedikit pembangunan ulang, tapi lebih banyak memori."
 	},
-	"Double-tap a block — take it in hand": {
-		"ru": "Двойной тап по блоку — взять в руку",
-		"uk": "Подвійний тап по блоку — взяти в руку",
-		"es": "Doble toque en un bloque — cógelo",
-		"pt_BR": "Toque duplo num bloco — pegue-o",
-		"de": "Block doppelt antippen — in die Hand nehmen",
-		"fr": "Double-touche un bloc — prends-le en main",
-		"tr": "Bloğa çift dokun — eline al",
-		"ja": "ブロックをダブルタップ — 手に取る",
-		"ko": "블록 더블 탭 — 손에 들기",
-		"zh_CN": "双击方块 — 拿在手上",
-		"id": "Ketuk dua kali blok — ambil ke tangan"
-	},
-	"Tap the vehicle — place a block": {
-		"ru": "Тап по машине — поставить блок",
-		"uk": "Тап по машині — поставити блок",
-		"es": "Toca el vehículo — colocar bloque",
-		"pt_BR": "Toque no veículo — colocar bloco",
-		"de": "Fahrzeug antippen — Block setzen",
-		"fr": "Touche le véhicule — poser un bloc",
-		"tr": "Araca dokun — blok yerleştir",
-		"ja": "車両をタップ — ブロックを設置",
-		"ko": "차량 탭 — 블록 설치",
-		"zh_CN": "点击载具 — 放置方块",
-		"id": "Ketuk kendaraan — pasang blok"
-	},
-	"Now tap yourself where it should attach. Any face will take it.": {
-		"ru": "Теперь тапни по себе там, где она должна встать. Подойдёт любая грань.",
-		"uk": "Тепер тапни по собі там, де вона має стати. Підійде будь-яка грань."
-	},
-	"Tap the outlined cell to attach it there": {
-		"ru": "Тап по обведённой клетке — поставить туда",
-		"uk": "Тап по обведеній клітинці — поставити туди",
-		"es": "Toca la celda marcada para acoplarla",
-		"pt_BR": "Toque na célula destacada para encaixar",
-		"de": "Markierte Zelle antippen zum Anbauen",
-		"fr": "Touche la cellule entourée pour la fixer",
-		"tr": "Takmak için işaretli hücreye dokun",
-		"ja": "枠のマスをタップして取り付ける",
-		"ko": "표시된 칸을 탭해서 부착",
-		"zh_CN": "点击高亮格子把它装上",
-		"id": "Ketuk sel bergaris untuk memasang"
-	},
-	"Tap the cabin's roof to attach it": {
-		"ru": "Нажмите на крышу кабины, чтобы поставить",
-		"uk": "Натисніть на дах кабіни, щоб поставити",
-		"es": "Toca el techo de la cabina para montarla",
-		"pt_BR": "Toque no teto da cabine para montar",
-		"de": "Tippe aufs Kabinendach, um es anzubauen",
-		"fr": "Touchez le toit de la cabine pour la monter",
-		"tr": "Takmak için kabinin tepesine dokun",
-		"ja": "キャビンの屋根をタップして取り付ける",
-		"ko": "조종석 위를 눌러 단다",
-		"zh_CN": "点击驾驶舱顶部装上它",
-		"id": "Ketuk atap kabin untuk memasangnya"
-	},
 	"EFFECTS": {
 		"ru": "ЭФФЕКТЫ",
 		"uk": "ЕФЕКТИ",

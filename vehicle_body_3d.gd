@@ -1033,13 +1033,9 @@ func _input(event: InputEvent) -> void:
 		# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
 		if not _tap_over_ui(event.position):
 			var mp: Vector2 = _snap_tap(event.position) if _is_click else event.position
-			if _is_click and _swallow_habit(mp):
-				return
 			_handle_click(mp)                      # наводим/подсвечиваем (ховер и клик)
-			# A click with a block in the hand on a cell places it; a DOUBLE click takes.
-			if _is_click and not event.double_click and _aimed_at_cell():
-				_place_on_tap(mp)
-			elif event is InputEventMouseButton and event.double_click:
+			# ДВОЙНОЙ клик мышью = подтверждение: поставить блок из руки / взять наведённый.
+			if event is InputEventMouseButton and event.double_click:
 				_commit_build_tap(mp)
 	elif event is InputEventScreenTouch:
 		if event.pressed:
@@ -1061,23 +1057,16 @@ func _input(event: InputEvent) -> void:
 				and Time.get_ticks_msec() - _build_tap_ms < LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
 			var tp: Vector2 = _snap_tap(event.position)
-			if _swallow_habit(tp):
-				return
 			_handle_click(tp)                      # ОДИНОЧНЫЙ тап = навести/подсветить блок
-			# A SINGLE tap with a block in the hand on a cell of a machine PLACES it (the player's
-			# call: "double tap to take or remove, a single tap to place"); a DOUBLE tap (the second
-			# within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP) takes, and with a block in the hand throws it
-			# on the ground or lays a cabin / base there.
-			if _aimed_at_cell():
-				_place_on_tap(tp)
-				return
+			# A DOUBLE tap (the second within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP) confirms: take or place.
+			# The window is measured on the raw finger: the snap may move two taps of one double apart.
 			var _now := Time.get_ticks_msec()
-			if _now - _dbl_tap_ms < DOUBLE_TAP_MS and _dbl_tap_pos.distance_squared_to(tp) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP:
+			if _now - _dbl_tap_ms < DOUBLE_TAP_MS and _dbl_tap_pos.distance_squared_to(event.position) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP:
 				_commit_build_tap(tp)
 				_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
 			else:
 				_dbl_tap_ms = _now
-				_dbl_tap_pos = tp
+				_dbl_tap_pos = event.position
 	elif event is InputEventScreenDrag:
 		if event.index == _build_tap_idx and _build_tap_pos.distance_to(event.position) > 14.0:
 			_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
@@ -2258,39 +2247,6 @@ func _ours_at(p: Vector2) -> bool:
 		return true
 	return root != null and "vehicles" in camera_controller and camera_controller.vehicles.has(root) \
 			and global_position.distance_squared_to((root as Node3D).global_position) <= BUILD_REACH * BUILD_REACH
-
-## The aim this tap just made (`_handle_click`, here or on the machine it handed the aim to) lies on
-## a machine's cell with an ordinary block in the hand - a single tap places it.
-func _aimed_at_cell() -> bool:
-	if not block_take or hand_kind != Hand.BLOCK:
-		return false
-	var held: Node3D = _hand_instance()
-	if held == null or not ("block" in held) or G.is_cabin(int(held.get("block"))):
-		return false                               # a cabin goes on the ground: a double tap
-	var t: Node = _delegated_to if is_instance_valid(_delegated_to) else self
-	return t.get("_preview_res") != null and t.get("_cabin_ground") == null
-
-## A single tap places, and the old habit of a double tap would land its second half on the next
-## block the serial refill put in the hand: the tap after a placement inside the double-tap window
-## and slop is eaten.
-var _habit_ms: int = 0
-var _habit_pos := Vector2.ZERO
-func _place_on_tap(p: Vector2) -> void:
-	_commit_build_tap(p)
-	_dbl_tap_ms = 0
-	_habit_ms = Time.get_ticks_msec()
-	_habit_pos = p
-	get_viewport().set_input_as_handled()
-
-func _swallow_habit(p: Vector2) -> bool:
-	if _habit_ms == 0:
-		return false
-	var fresh: bool = Time.get_ticks_msec() - _habit_ms < DOUBLE_TAP_MS \
-			and _habit_pos.distance_squared_to(p) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP
-	_habit_ms = 0
-	if fresh:
-		get_viewport().set_input_as_handled()
-	return fresh
 
 ## Сколько держать, чтобы это считалось длинным нажатием.
 const LONG_PRESS_MS: int = 500

@@ -2808,19 +2808,15 @@ project: read it before claiming how anything works.
   against taps through the HUD, and a double tap that fired is swallowed.
 - Building on another of your machines is delegated to that machine (`_delegate_build`) — there is
   no second build implementation. Only the active machine delegates; hand flags move with the tap.
-- **A SINGLE TAP PLACES, A DOUBLE TAP TAKES** (`vehicle_body_3d._aimed_at_cell` / `_place_on_tap`; the
-  player: "double tap to take or remove, a single tap to place"). A tap whose aim, here or on the
-  machine it handed the aim to, lands on a machine's cell with an ordinary block in the hand places it
-  at once; with an empty hand a single tap only aims and the double tap takes; with a block in the
-  hand off any cell the double tap still throws it on the ground or lays a cabin / base there. The
-  OLD HABIT's second tap is eaten (`_swallow_habit`, inside the double-tap window and slop of a
-  placement), or it placed the block the serial refill had just put in the hand. THE TAP LEANS TOWARD
-  THE MACHINE (`_snap_tap`, `TAP_FUZZ` 22 / 44 px rings, the player: "hitting a block on a phone is
-  hard"): a tap meeting none of the player's machines is moved to the first ring point that does. AN
-  EMULATED MOUSE IS TOLD BY ITS DEVICE (`DEVICE_ID_EMULATION`), not only by 250 ms since a touch: a
-  second tap 276 ms after the first let the emulated click through first and it ate the habit guard.
-  Measured with synthetic touches on the real driver: a tap places (1 -> 2), the habit tap 215 ms
-  later places nothing, a tap 16 px off the hull's edge places, an empty hand's double tap takes.
+- **PLACING STAYS A DOUBLE TAP, AND THAT IS THE DESIGN** (the player's call, after a single-tap
+  placement was tried on a player's note and taken back): a phone has no hover, so the FIRST tap
+  aims and shows the ghost - face, cell, turn - and the second confirms. A single tap that places
+  puts a block wherever a stray touch lands (a camera turn not read as a swipe, a missed button),
+  every one of them on a machine the serial refill has just re-armed. THE TAP LEANS TOWARD THE
+  MACHINE (`_snap_tap`, `TAP_FUZZ` 22 / 44 px rings, the player: "hitting a block on a phone is
+  hard"): a tap meeting none of the player's machines AIMS at the first ring point that does; the
+  double tap's window is measured on the raw finger, since the snap may move its two halves apart.
+  AN EMULATED MOUSE IS TOLD BY ITS DEVICE (`DEVICE_ID_EMULATION`), not only by 250 ms since a touch.
 - A TAP IS ANYTHING SHORTER THAN A LONG PRESS, AND THE DOUBLE TAP IS WIDE (`DOUBLE_TAP_MS` 450,
   `DOUBLE_TAP_SLOP` 80 points). Both are measured in frame time, release to release, so a slow
   frame lands on top of the finger. With a 250 ms tap ceiling, 250..500 belonged to no gesture,
