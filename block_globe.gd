@@ -17,7 +17,7 @@ extends Control
 
 signal block_chosen(block_type: int)
 
-const SIZE := 320.0
+const SIZE := 360.0
 # The keys and their order are G.BLOCK_CATEGORIES'; a key missing here would hide its blocks
 # under Power (`_category_of`), so a new category is added in both places.
 const CAT_KEYS := ["blocks", "wheels", "attack", "factory", "power"]
@@ -37,11 +37,11 @@ const R_RING := 1.0                    # радиус кольца-мериди�
 const CORE_R := 0.26                   # радиус ядра-сферы
 const CAM_Z := 6.4
 const FOV := 30.0
-const SLOT := 0.34                     # целевой габарит превью блока
+const SLOT := 0.44                     # a preview's size; at 0.34 neighbours read as one mush (the player)
 const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», без заворота
 const SELECT_SCALE := 1.2
 const IDLE_SPIN := 0.6                 # рад/с — вращение выбранного блока в покое
-const GHOST_ALPHA := 0.4               # альфа «призрачных» неактивных колец
+const GHOST_ALPHA := 0.22              # the rings at the back: faint, or they bury the front one
 const ACTIVE_RING := Color(0.28, 0.55, 0.95)
 # Вид глобуса. Задаётся из HUD через @export (globe_tilt / globe_spin) → крутится в инспекторе
 # живьём (см. apply_view). view_pitch — НАКЛОН (смотрим сверху); view_yaw — ПРОКРУТ по красному
@@ -258,7 +258,7 @@ func _build_scene() -> void:
 
 	_label = Label.new()
 	_label.position = Vector2(8, 0)
-	_label.add_theme_font_size_override("font_size", 14)
+	_label.add_theme_font_size_override("font_size", 16)
 	_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
@@ -596,6 +596,9 @@ func _tick_globe(delta: float) -> void:
 		var ci := int(r["ci"])
 		var beta := _beta_of(ci)
 		var is_front: bool = ci == front
+		# THE OTHER TYPES SHOW ONLY WHILE THE TYPES TURN (the player: "the icons blend into a mush"):
+		# four rings of tinted see-through blocks round the one being chosen from read as a cloud.
+		(r["root"] as Node3D).visible = is_front or not settled or (_dragging and _axis == 1)
 		var want_ghost := 0 if is_front else 1
 		if int(r["ghosted"]) != want_ghost:
 			r["ghosted"] = want_ghost
@@ -622,6 +625,17 @@ func _tick_globe(delta: float) -> void:
 				vis.rotation.y = 0.0
 	if not settled:
 		_sync_bg_ovals()
+
+## THE GLOBE TAKES A FINGER INSIDE ITS RIM, NOT ITS SQUARE (the player: "its trigger radius is
+## too big"): the square's corners are world the player taps to build on. `HIT_R` of the size round
+## the middle holds the dial and the rings with a margin for a thumb.
+const HIT_R := 0.38
+func _has_point(point: Vector2) -> bool:
+	return point.distance_squared_to(size * 0.5) <= pow(minf(size.x, size.y) * HIT_R, 2.0)
+
+## The same answer for a screen point, for whoever asks "was that tap the globe's" (the world tap).
+func hits(global_point: Vector2) -> bool:
+	return is_visible_in_tree() and _has_point(get_global_transform_with_canvas().affine_inverse() * global_point)
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:

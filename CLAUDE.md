@@ -2587,7 +2587,12 @@ project: read it before claiming how anything works.
   NOT `TAU / N`: a meridian at β and one at β + 180° are the same plane, so N of them share half a
   turn (five at 36°); front is `posmod(round(-spin / AZ), N)`, which repeats every N steps, and the
   snap and `_nearest_nonempty` cover ±2, enough for five. A count shows on the SELECTED block only
-  (`×1` too); one on every block of the front ring sat over its neighbours' models.
+  (`×1` too); one on every block of the front ring sat over its neighbours' models. THE GLOBE IS
+  ROUND TO A FINGER (`_has_point`, `HIT_R` of its size, and `hits` for the world tap's "over the HUD"):
+  its square's corners took taps meant for the machine (the player: "its trigger radius is too big").
+  THE OTHER TYPES' RINGS SHOW ONLY WHILE THE TYPES TURN, and the previews are bigger (`SIZE` 360,
+  `SLOT` 0.44): four rings of tinted see-through blocks round the front one read as a cloud of
+  coloured pixels on the phone ("the icons blend into a mush").
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
   it. BOTH ITS KINDS ARE GRAPHS on the tech tree's canvas (`TechGraph`), and neither is a grid of
@@ -2652,6 +2657,9 @@ project: read it before claiming how anything works.
   and the camera - from the moment the gesture arms in the bottom-centre strip until the release; the
   release itself goes on, since the camera records releases first. Synthetic touches on the engine
   could not reproduce the turn (the garage's panel takes the press there), so the phone confirms it.
+- **THE GARAGE'S STATS FOLD AWAY IN ASSEMBLY** (`tech_ui._build_panel_fold`, the player: "the panel
+  covers a quarter of the screen"): a "›" beside the machine's name folds the right panel and the
+  hints strip, a "‹" at the right edge brings them back; kept in `G.ui_windows` (`FOLD_KEY`).
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - **THE PLAYER MOVES THE CONTROLS** (`hud` "THE PLAYER'S OWN LAYOUT", `LayoutEditor`; garage -> SETTINGS
   -> INTERFACE -> "Move controls"; the player's call): ATTACK, BUILD, the inventory, the menu, the
@@ -2783,6 +2791,15 @@ project: read it before claiming how anything works.
   against taps through the HUD, and a double tap that fired is swallowed.
 - Building on another of your machines is delegated to that machine (`_delegate_build`) — there is
   no second build implementation. Only the active machine delegates; hand flags move with the tap.
+- **PLACING STAYS A DOUBLE TAP, AND THAT IS THE DESIGN** (the player's call, after a single-tap
+  placement was tried on a player's note and taken back): a phone has no hover, so the FIRST tap
+  aims and shows the ghost - face, cell, turn - and the second confirms. A single tap that places
+  puts a block wherever a stray touch lands (a camera turn not read as a swipe, a missed button),
+  every one of them on a machine the serial refill has just re-armed. THE TAP LEANS TOWARD THE
+  MACHINE (`_snap_tap`, `TAP_FUZZ` 22 / 44 px rings, the player: "hitting a block on a phone is
+  hard"): a tap meeting none of the player's machines AIMS at the first ring point that does; the
+  double tap's window is measured on the raw finger, since the snap may move its two halves apart.
+  AN EMULATED MOUSE IS TOLD BY ITS DEVICE (`DEVICE_ID_EMULATION`), not only by 250 ms since a touch.
 - A TAP IS ANYTHING SHORTER THAN A LONG PRESS, AND THE DOUBLE TAP IS WIDE (`DOUBLE_TAP_MS` 450,
   `DOUBLE_TAP_SLOP` 80 points). Both are measured in frame time, release to release, so a slow
   frame lands on top of the finger. With a 250 ms tap ceiling, 250..500 belonged to no gesture,
@@ -3662,7 +3679,11 @@ project: read it before claiming how anything works.
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
   on `G.licence_granted` (emitted by `grant_licence`), that grade's blocks on `G.grade_up`; a gold
   frame on a block already researched. Several queue. It was a System line in the dialogue strip,
-  which scrolls away and shows nothing. Not on the proving ground.
+  which scrolls away and shows nothing. Not on the proving ground. THE CARD FITS THE SCREEN (the
+  player: "on the phone the panel cannot be closed" - thirteen grade-2 blocks in three rows put the
+  button under the bottom edge of a 576-unit landscape screen): the grid takes as many columns as
+  the width allows and scrolls in what is left after `CARD_REST`, and a tap beside the card closes
+  it too (after `DIM_GRACE_MS`: it comes up mid-fight under a finger already down).
 - **THE MARLIT SOLAR ARRAY IS A LID THAT TURNS OVER** (`MARLIT_SOLAR`, `blocks/scripts/marlit_solar.gd`,
   `art/emitter_models.py` marlit_solar): a 2x1x2 housing whose top is two leaves, the Marlit window on
   one side and 4x2 cells on the other. On the anchor each leaf rides up on two rams to the middle of
