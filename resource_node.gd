@@ -123,6 +123,7 @@ func hurt(damage: int = 10) -> void:
 	var owner_node: Node = get_parent()
 	if owner_node != null and owner_node.has_method("vein_hit"):
 		owner_node.vein_hit(self)
+	Sfx.at("chop" if is_wood else "mine", global_position + Vector3.UP)   # the key's own gap paces a drill
 	if not is_wood:
 		var per: int = maxi(max_hp / ore_total, 1)
 		_dmg += damage

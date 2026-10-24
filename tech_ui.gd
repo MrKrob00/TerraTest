@@ -398,6 +398,8 @@ func _passes_filter(block_type: int) -> bool:
 			return _categories.get(_shop_filter, []).has(block_type)
 
 func _on_visibility_changed() -> void:
+	if get_tree().get_frame() > 120:           # not the garage hiding itself as the world opens
+		Sfx.ui("open" if visible else "close")
 	if visible:
 		refresh()
 

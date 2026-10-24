@@ -95,6 +95,7 @@ func _on_timer_timeout() -> void:
 	if _ours():
 		Q.report("item_sold", 1)                   # Marlit's market count: anything sold
 	if price > 0:
+		Sfx.at("sale", global_position)
 		if is_instance_valid(_popup) and _popup.can_merge():
 			_popup.add(price)
 		else:

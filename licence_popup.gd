@@ -59,6 +59,7 @@ func _show_next() -> void:
 		return
 	var e: Dictionary = _queue.pop_front()
 	_shown_ms = Time.get_ticks_msec()
+	Sfx.ui("licence")
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP

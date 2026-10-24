@@ -303,6 +303,13 @@ func _fill_audio() -> void:
 	panel.contexts = contexts if not contexts.is_empty() else [m.Ctx.MENU]
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_child(panel)
+	_list.add_child(_head(tr("EFFECTS")))
+	_list.add_child(_slider_row(tr("Effects volume"), tr("Shots, hits, building and the engine."),
+			Sfx.volume, 0.0, 1.0, 0.05, "%.2f", 1.0, _on_sfx_volume))
+
+func _on_sfx_volume(v: float) -> void:
+	Sfx.set_volume(v)
+	Sfx.ui("click")
 
 # ── Controls ────────────────────────────────────────────────────────────────────
 func _fill_controls() -> void:

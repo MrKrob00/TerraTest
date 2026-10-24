@@ -19,6 +19,7 @@ var _left: int = 2
 var _reload_t: float = 0.0
 
 func _init() -> void:
+	fire_sfx = "shotgun"
 	turn_speed = 75.0        # deg/s (WeaponBlock._turn_to): a short barrel pair, quick
 
 func _ready() -> void:
